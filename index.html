@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Minimal Reader</title>
+
+  <!-- PWA & iOS Safari tags -->
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#121212">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Reader">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+
+  <link rel="stylesheet" href="style.css">
+  
+  <!-- Local libraries for 100% offline usage -->
+  <script src="lib/jszip.min.js"></script>
+  <script src="lib/epub.min.js"></script>
+</head>
+<body>
+
+  <!-- ================== LIBRARY VIEW ================== -->
+  <div id="library-view">
+    <header class="library-header">
+      <h1>Meine Bücher</h1>
+      <button id="add-book-btn" class="btn-add">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="12" y1="5" x2="12" y2="19"></line>
+          <line x1="5" y1="12" x2="19" y2="12"></line>
+        </svg>
+        Hinzufügen
+      </button>
+      <input type="file" id="file-input" accept=".cbz,.epub,.zip" style="display: none;">
+    </header>
+
+    <main class="library-content">
+      <div id="empty-state" class="empty-state">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="opacity: 0.5; margin-bottom: 12px;">
+          <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
+          <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
+        </svg>
+        <p>Noch keine Bücher vorhanden.</p>
+        <p>Tippe oben auf <strong>Hinzufügen</strong>, um eine <code>.cbz</code> oder <code>.epub</code> Datei von deinem iPhone auszuwählen.</p>
+      </div>
+
+      <div id="book-list" class="book-list"></div>
+    </main>
+  </div>
+
+  <!-- ================== READER VIEW ================== -->
+  <div id="reader-view">
+    <div class="reader-canvas-container">
+      <div id="loading" class="loading-indicator">Laden...</div>
+      
+      <!-- CBZ Image Viewer -->
+      <img id="image-viewer" alt="Comic Page" style="display: none;">
+      
+      <!-- EPUB HTML Viewer -->
+      <div id="epub-viewer" style="display: none;"></div>
+
+      <!-- Invisible Tap Zones (Previous, Menu, Next) -->
+      <div class="tap-zone left" id="tap-prev"></div>
+      <div class="tap-zone middle" id="tap-menu"></div>
+      <div class="tap-zone right" id="tap-next"></div>
+    </div>
+
+    <!-- Controls Overlay -->
+    <div id="reader-overlay" class="reader-overlay">
+      <div class="reader-top-bar">
+        <button id="close-reader-btn" class="btn-icon" title="Zurück zur Bibliothek">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="15 18 9 12 15 6"></polyline>
+          </svg>
+        </button>
+        <div id="reader-title" class="reader-title">Titel</div>
+        <div style="width: 36px;"></div> <!-- Spacer -->
+      </div>
+
+      <div class="reader-bottom-bar">
+        <div class="progress-row">
+          <input type="range" id="page-slider" class="page-slider" min="1" max="1" value="1">
+          <span id="page-info" class="page-info">1 / 1</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
