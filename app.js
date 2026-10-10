@@ -574,6 +574,50 @@ window.addEventListener('keydown', (e) => {
 });
 
 // ==========================================
+
+// ==========================================
+// 7.5 Swipe / Slide Detection
+// ==========================================
+let touchStartX = 0;
+let touchEndX = 0;
+let touchStartY = 0;
+let touchEndY = 0;
+const readerCanvas = document.querySelector('.reader-canvas-container');
+
+readerCanvas.addEventListener('touchstart', (e) => {
+  touchStartX = e.changedTouches[0].screenX;
+  touchStartY = e.changedTouches[0].screenY;
+}, { passive: true });
+
+readerCanvas.addEventListener('touchend', (e) => {
+  touchEndX = e.changedTouches[0].screenX;
+  touchEndY = e.changedTouches[0].screenY;
+  handleSwipe();
+}, { passive: true });
+
+function handleSwipe() {
+  if (!currentBook) return;
+  
+  const diffX = touchEndX - touchStartX;
+  const diffY = touchEndY - touchStartY;
+  
+  // Ignore vertical swipes (might be scrolling if zoomed)
+  if (Math.abs(diffY) > Math.abs(diffX)) return;
+  
+  // Swipe threshold (min distance)
+  if (Math.abs(diffX) < 40) return;
+  
+  const isRtl = (currentBook.type === 'cbz' && cbzReadDirection === 'rtl');
+  
+  if (diffX < 0) {
+    // Swipe Left (<-)
+    isRtl ? navigatePrev() : navigateNext();
+  } else {
+    // Swipe Right (->)
+    isRtl ? navigateNext() : navigatePrev();
+  }
+}
+
 // 8. Service Worker Registration
 // ==========================================
 if ('serviceWorker' in navigator) {
