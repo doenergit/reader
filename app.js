@@ -628,5 +628,22 @@ if ('serviceWorker' in navigator) {
   });
 }
 
+
+const forceReloadBtn = document.getElementById('force-reload-btn');
+if (forceReloadBtn) {
+  forceReloadBtn.addEventListener('click', () => {
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then(function(registrations) {
+        for(let registration of registrations) {
+          registration.unregister();
+        }
+        window.location.reload(true);
+      });
+    } else {
+      window.location.reload(true);
+    }
+  });
+}
+
 // Initial Boot
 refreshLibrary();

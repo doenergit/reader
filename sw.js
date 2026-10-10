@@ -1,4 +1,4 @@
-const CACHE_NAME = 'minimal-reader-v4';
+const CACHE_NAME = 'minimal-reader-v5';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
@@ -35,28 +35,24 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  // Only handle GET requests
   if (event.request.method !== 'GET') return;
 
+  // Network First, falling back to cache
   event.respondWith(
-    caches.match(event.request).then((cachedResponse) => {
-      if (cachedResponse) {
-        return cachedResponse;
-      }
-      return fetch(event.request).then((networkResponse) => {
-        if (!networkResponse || networkResponse.status !== 200 || networkResponse.type !== 'basic') {
-          return networkResponse;
-        }
-        const responseToCache = networkResponse.clone();
-        caches.open(CACHE_NAME).then((cache) => {
-          cache.put(event.request, responseToCache);
-        });
+    fetch(event.request).then((networkResponse) => {
+      if (!networkResponse || networkResponse.status !== 200 || networkResponse.type !== 'basic') {
         return networkResponse;
-      }).catch(() => {
-        // Fallback for offline if page requested
-        if (event.request.mode === 'navigate') {
-          return caches.match('./index.html');
-        }
+      }
+      const responseToCache = networkResponse.clone();
+      caches.open(CACHE_NAME).then((cache) => {
+        cache.put(event.request, responseToCache);
+      });
+      return networkResponse;
+    }).catch(() => {
+      // Offline fallback
+      return caches.match(event.request).then((cachedResponse) => {
+        if (cachedResponse) return cachedResponse;
+        if (event.request.mode === 'navigate') return caches.match('./index.html');
       });
     })
   );
