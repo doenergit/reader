@@ -55,7 +55,11 @@
       <div id="loading" class="loading-indicator">Laden...</div>
       
       <!-- CBZ Image Viewer -->
-      <img id="image-viewer" alt="Comic Page" style="display: none;">
+      <!-- CBZ Image Viewer -->
+      <div id="cbz-viewer" style="display: none; width: 100%; height: 100%; align-items: center; justify-content: center; gap: 0;">
+        <img id="cbz-page-1" style="max-width: 50%; max-height: 100%; object-fit: contain; user-select: none; -webkit-user-drag: none;">
+        <img id="cbz-page-2" style="max-width: 50%; max-height: 100%; object-fit: contain; user-select: none; -webkit-user-drag: none; display: none;">
+      </div>
       
       <!-- EPUB HTML Viewer -->
       <div id="epub-viewer" style="display: none;"></div>
@@ -75,13 +79,45 @@
           </svg>
         </button>
         <div id="reader-title" class="reader-title">Titel</div>
-        <div style="width: 36px;"></div> <!-- Spacer -->
+        <button id="settings-btn" class="btn-icon" title="Einstellungen">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
+        </button>
       </div>
 
       <div class="reader-bottom-bar">
         <div class="progress-row">
           <input type="range" id="page-slider" class="page-slider" min="1" max="1" value="1">
           <span id="page-info" class="page-info">1 / 1</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  
+  <!-- Settings Modal -->
+  <div id="settings-modal" class="settings-modal" style="display: none;">
+    <div class="settings-content">
+      <div class="settings-header">
+        <h3>Lese-Einstellungen</h3>
+        <button id="close-settings-btn" class="btn-icon" style="background: none; color: white;">✕</button>
+      </div>
+      <div id="cbz-settings" style="display: none; padding: 16px;">
+        <div class="setting-group">
+          <label>Layout (Comic/Manga)</label>
+          <div class="toggle-group">
+            <button class="toggle-btn active" data-opt="single" id="btn-layout-single">1 Seite</button>
+            <button class="toggle-btn" data-opt="double" id="btn-layout-double">2 Seiten</button>
+          </div>
+        </div>
+        <div class="setting-group" style="margin-top: 16px;">
+          <label>Leserichtung</label>
+          <div class="toggle-group">
+            <button class="toggle-btn active" data-opt="rtl" id="btn-dir-rtl">← Manga (RTL)</button>
+            <button class="toggle-btn" data-opt="ltr" id="btn-dir-ltr">Comic (LTR) →</button>
+          </div>
         </div>
       </div>
     </div>

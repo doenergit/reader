@@ -86,6 +86,10 @@ let currentCbzZip = null;
 let currentCbzEntries = [];
 let currentCbzIndex = 0;
 let currentObjectUrl = null;
+let currentObjectUrl2 = null;
+let cbzDisplayMode = localStorage.getItem('cbzDisplayMode') || 'single';
+let cbzReadDirection = localStorage.getItem('cbzReadDirection') || 'rtl';
+
 
 let currentEpubBook = null;
 let currentEpubRendition = null;
@@ -105,7 +109,40 @@ const pageSlider = document.getElementById('page-slider');
 const pageInfo = document.getElementById('page-info');
 const loadingIndicator = document.getElementById('loading');
 
-const imageViewer = document.getElementById('image-viewer');
+const cbzViewer = document.getElementById('cbz-viewer');
+const cbzPage1 = document.getElementById('cbz-page-1');
+const cbzPage2 = document.getElementById('cbz-page-2');
+
+const settingsBtn = document.getElementById('settings-btn');
+const settingsModal = document.getElementById('settings-modal');
+const closeSettingsBtn = document.getElementById('close-settings-btn');
+const cbzSettings = document.getElementById('cbz-settings');
+const btnLayoutSingle = document.getElementById('btn-layout-single');
+const btnLayoutDouble = document.getElementById('btn-layout-double');
+const btnDirRtl = document.getElementById('btn-dir-rtl');
+const btnDirLtr = document.getElementById('btn-dir-ltr');
+
+function updateSettingsUI() {
+  btnLayoutSingle.classList.toggle('active', cbzDisplayMode === 'single');
+  btnLayoutDouble.classList.toggle('active', cbzDisplayMode === 'double');
+  btnDirRtl.classList.toggle('active', cbzReadDirection === 'rtl');
+  btnDirLtr.classList.toggle('active', cbzReadDirection === 'ltr');
+}
+
+settingsBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
+  settingsModal.style.display = 'flex';
+  cbzSettings.style.display = currentBook && currentBook.type === 'cbz' ? 'block' : 'none';
+  updateSettingsUI();
+});
+closeSettingsBtn.addEventListener('click', () => {
+  settingsModal.style.display = 'none';
+});
+btnLayoutSingle.addEventListener('click', () => { cbzDisplayMode = 'single'; localStorage.setItem('cbzDisplayMode', cbzDisplayMode); updateSettingsUI(); if(currentBook?.type==='cbz') renderCbzPage(currentCbzIndex); });
+btnLayoutDouble.addEventListener('click', () => { cbzDisplayMode = 'double'; localStorage.setItem('cbzDisplayMode', cbzDisplayMode); updateSettingsUI(); if(currentBook?.type==='cbz') renderCbzPage(currentCbzIndex); });
+btnDirRtl.addEventListener('click', () => { cbzReadDirection = 'rtl'; localStorage.setItem('cbzReadDirection', cbzReadDirection); updateSettingsUI(); if(currentBook?.type==='cbz') renderCbzPage(currentCbzIndex); });
+btnDirLtr.addEventListener('click', () => { cbzReadDirection = 'ltr'; localStorage.setItem('cbzReadDirection', cbzReadDirection); updateSettingsUI(); if(currentBook?.type==='cbz') renderCbzPage(currentCbzIndex); });
+
 const epubViewer = document.getElementById('epub-viewer');
 
 const tapPrev = document.getElementById('tap-prev');
@@ -229,11 +266,11 @@ async function openBook(id) {
   loadingIndicator.classList.add('active');
 
   if (currentBook.type === 'cbz') {
-    imageViewer.style.display = 'block';
+    cbzViewer.style.display = 'flex';
     epubViewer.style.display = 'none';
     await initCbzReader(currentBook);
   } else if (currentBook.type === 'epub') {
-    imageViewer.style.display = 'none';
+    cbzViewer.style.display = 'none';
     epubViewer.style.display = 'block';
     await initEpubReader(currentBook);
   }
@@ -247,7 +284,12 @@ function closeReader() {
     URL.revokeObjectURL(currentObjectUrl);
     currentObjectUrl = null;
   }
-  imageViewer.src = '';
+  if (currentObjectUrl2) {
+    URL.revokeObjectURL(currentObjectUrl2);
+    currentObjectUrl2 = null;
+  }
+  cbzPage1.src = '';
+  cbzPage2.src = '';
   currentCbzZip = null;
   currentCbzEntries = [];
 
@@ -316,42 +358,68 @@ async function initCbzReader(book) {
 
 async function renderCbzPage(index) {
   if (index < 0 || index >= currentCbzEntries.length) return;
+  
+  if (cbzDisplayMode === 'double' && index > 0) {
+    if (index % 2 === 0) index = index - 1; 
+  }
+  
   currentCbzIndex = index;
-
   loadingIndicator.classList.add('active');
 
-  const entryName = currentCbzEntries[index];
-  const blob = await currentCbzZip.file(entryName).async('blob');
+  if (currentObjectUrl) URL.revokeObjectURL(currentObjectUrl);
+  if (currentObjectUrl2) URL.revokeObjectURL(currentObjectUrl2);
 
-  // Memory management: free previous image URL from memory immediately
-  if (currentObjectUrl) {
-    URL.revokeObjectURL(currentObjectUrl);
+  const entryName1 = currentCbzEntries[index];
+  const blob1 = await currentCbzZip.file(entryName1).async('blob');
+  currentObjectUrl = URL.createObjectURL(blob1);
+
+  if (cbzDisplayMode === 'single' || index === 0 || index >= currentCbzEntries.length - 1) {
+    cbzPage1.src = currentObjectUrl;
+    cbzPage1.style.display = 'block';
+    cbzPage1.style.maxWidth = '100%';
+    cbzPage2.style.display = 'none';
+    cbzViewer.style.flexDirection = 'row';
+    
+    pageSlider.value = index + 1;
+    pageInfo.textContent = `${index + 1} / ${currentCbzEntries.length}`;
+  } else {
+    const entryName2 = currentCbzEntries[index + 1];
+    const blob2 = await currentCbzZip.file(entryName2).async('blob');
+    currentObjectUrl2 = URL.createObjectURL(blob2);
+    
+    if (cbzReadDirection === 'rtl') {
+      cbzViewer.style.flexDirection = 'row-reverse';
+    } else {
+      cbzViewer.style.flexDirection = 'row';
+    }
+    
+    cbzPage1.src = currentObjectUrl;
+    cbzPage2.src = currentObjectUrl2;
+    
+    cbzPage1.style.display = 'block';
+    cbzPage1.style.maxWidth = '50%';
+    cbzPage2.style.display = 'block';
+    cbzPage2.style.maxWidth = '50%';
+    
+    pageSlider.value = index + 2;
+    pageInfo.textContent = `${index + 1}-${index + 2} / ${currentCbzEntries.length}`;
   }
 
-  currentObjectUrl = URL.createObjectURL(blob);
-  imageViewer.src = currentObjectUrl;
-
-  pageSlider.value = index + 1;
-  pageInfo.textContent = `${index + 1} / ${currentCbzEntries.length}`;
-
   loadingIndicator.classList.remove('active');
-
-  // Save progress
-  dbUpdateProgress(currentBook.id, {
-    page: currentCbzIndex,
-    total: currentCbzEntries.length
-  });
+  dbUpdateProgress(currentBook.id, { page: currentCbzIndex, total: currentCbzEntries.length });
 }
 
 function cbzNext() {
-  if (currentCbzIndex < currentCbzEntries.length - 1) {
-    renderCbzPage(currentCbzIndex + 1);
+  const step = (cbzDisplayMode === 'double' && currentCbzIndex > 0) ? 2 : 1;
+  if (currentCbzIndex + step < currentCbzEntries.length) {
+    renderCbzPage(currentCbzIndex + step);
   }
 }
 
 function cbzPrev() {
   if (currentCbzIndex > 0) {
-    renderCbzPage(currentCbzIndex - 1);
+    const step = (cbzDisplayMode === 'double' && currentCbzIndex > 1) ? 2 : 1;
+    renderCbzPage(currentCbzIndex - step);
   }
 }
 
@@ -459,10 +527,11 @@ function handlePageClick(e) {
   const x = e.clientX || (e.touches && e.touches[0].clientX);
   if (!x) return;
 
+  const isRtl = (currentBook && currentBook.type === 'cbz' && cbzReadDirection === 'rtl');
   if (x < width * 0.3) {
-    navigatePrev();
+    isRtl ? navigateNext() : navigatePrev();
   } else if (x > width * 0.7) {
-    navigateNext();
+    isRtl ? navigatePrev() : navigateNext();
   } else {
     toggleOverlay();
   }
@@ -482,8 +551,14 @@ function navigatePrev() {
   else if (currentBook.type === 'epub') epubPrev();
 }
 
-tapPrev.addEventListener('click', navigatePrev);
-tapNext.addEventListener('click', navigateNext);
+tapPrev.addEventListener('click', () => {
+  const isRtl = (currentBook && currentBook.type === 'cbz' && cbzReadDirection === 'rtl');
+  isRtl ? navigateNext() : navigatePrev();
+});
+tapNext.addEventListener('click', () => {
+  const isRtl = (currentBook && currentBook.type === 'cbz' && cbzReadDirection === 'rtl');
+  isRtl ? navigatePrev() : navigateNext();
+});
 tapMenu.addEventListener('click', toggleOverlay);
 
 // Keyboard support
