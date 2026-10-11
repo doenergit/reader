@@ -49,23 +49,40 @@ async function dbGetBook(id) {
   });
 }
 
-async function dbUpdateProgress(id, progress) {
-  const db = await openDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_NAME, 'readwrite');
-    const store = tx.objectStore(STORE_NAME);
-    const getReq = store.get(id);
-    getReq.onsuccess = () => {
-      const book = getReq.result;
-      if (book) {
-        book.progress = progress;
-        book.lastReadAt = Date.now();
-        store.put(book);
-      }
-      resolve();
-    };
-    getReq.onerror = () => reject(getReq.error);
-  });
+// Debounced Progress Saver to prevent stalling disk I/O
+let progressTimeout = null;
+function dbUpdateProgress(id, progress) {
+  // Update local memory and localStorage immediately (0ms)
+  localStorage.setItem('prog_' + id, JSON.stringify({ progress, lastReadAt: Date.now() }));
+  
+  if (currentBook && currentBook.id === id) {
+    currentBook.progress = progress;
+    currentBook.lastReadAt = Date.now();
+  }
+
+  const bookInList = cachedBooksList.find(b => b.id === id);
+  if (bookInList) {
+    bookInList.progress = progress;
+    bookInList.lastReadAt = Date.now();
+  }
+
+  clearTimeout(progressTimeout);
+  progressTimeout = setTimeout(async () => {
+    try {
+      const db = await openDB();
+      const tx = db.transaction(STORE_NAME, 'readwrite');
+      const store = tx.objectStore(STORE_NAME);
+      const req = store.get(id);
+      req.onsuccess = () => {
+        const b = req.result;
+        if (b) {
+          b.progress = progress;
+          b.lastReadAt = Date.now();
+          store.put(b);
+        }
+      };
+    } catch (e) {}
+  }, 1000);
 }
 
 async function dbDeleteBook(id) {
@@ -85,8 +102,12 @@ let currentBook = null;
 let currentCbzZip = null;
 let currentCbzEntries = [];
 let currentCbzIndex = 0;
-let currentObjectUrl = null;
-let currentObjectUrl2 = null;
+
+// Preload Cache (+/- 2 pages in memory for 0ms transitions)
+const cbzCache = new Map();
+
+// In-Memory Books List (Avoids loading 500MB Blobs from IndexedDB when closing reader)
+let cachedBooksList = [];
 
 // Settings: default 'ltr' so right tap / left swipe = NEXT (Weiter)
 let cbzDisplayMode = localStorage.getItem('cbzDisplayMode') || 'single';
@@ -202,7 +223,7 @@ if (forceReloadBtn) {
 }
 
 // ==========================================
-// 3. Library Management
+// 3. Fast In-Memory Library Management
 // ==========================================
 function formatBytes(bytes) {
   if (bytes === 0) return '0 B';
@@ -212,18 +233,17 @@ function formatBytes(bytes) {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
 }
 
-async function refreshLibrary() {
-  const books = await dbGetAllBooks();
-  books.sort((a, b) => (b.lastReadAt || 0) - (a.lastReadAt || 0));
+function renderLibraryList() {
+  cachedBooksList.sort((a, b) => (b.lastReadAt || 0) - (a.lastReadAt || 0));
 
   bookListEl.innerHTML = '';
-  if (books.length === 0) {
+  if (cachedBooksList.length === 0) {
     emptyStateEl.style.display = 'block';
     return;
   }
   emptyStateEl.style.display = 'none';
 
-  books.forEach((book) => {
+  cachedBooksList.forEach((book) => {
     const card = document.createElement('div');
     card.className = 'book-card';
 
@@ -261,12 +281,40 @@ async function refreshLibrary() {
       e.stopPropagation();
       if (confirm(`"${book.name}" wirklich von deinem Gerät löschen?`)) {
         await dbDeleteBook(book.id);
-        refreshLibrary();
+        cachedBooksList = cachedBooksList.filter(b => b.id !== book.id);
+        renderLibraryList();
       }
     });
 
     bookListEl.appendChild(card);
   });
+}
+
+async function loadLibraryFromDisk() {
+  const books = await dbGetAllBooks();
+  cachedBooksList = books.map(b => {
+    // Keep metadata in memory, check localStorage for recent progress
+    const saved = localStorage.getItem('prog_' + b.id);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed.lastReadAt > (b.lastReadAt || 0)) {
+          b.progress = parsed.progress;
+          b.lastReadAt = parsed.lastReadAt;
+        }
+      } catch (e) {}
+    }
+    return {
+      id: b.id,
+      name: b.name,
+      type: b.type,
+      size: b.size,
+      addedAt: b.addedAt,
+      lastReadAt: b.lastReadAt,
+      progress: b.progress
+    };
+  });
+  renderLibraryList();
 }
 
 // Add Book File Handling
@@ -298,7 +346,16 @@ fileInput.addEventListener('change', async (e) => {
 
   await dbSaveBook(newBook);
   fileInput.value = '';
-  await refreshLibrary();
+  cachedBooksList.unshift({
+    id: newBook.id,
+    name: newBook.name,
+    type: newBook.type,
+    size: newBook.size,
+    addedAt: newBook.addedAt,
+    lastReadAt: newBook.lastReadAt,
+    progress: newBook.progress
+  });
+  renderLibraryList();
   openBook(newBook.id);
 });
 
@@ -306,16 +363,27 @@ fileInput.addEventListener('change', async (e) => {
 // 4. Reader Controller
 // ==========================================
 async function openBook(id) {
+  loadingIndicator.classList.add('active');
   currentBook = await dbGetBook(id);
-  if (!currentBook) return;
+  if (!currentBook) {
+    loadingIndicator.classList.remove('active');
+    return;
+  }
+
+  // Restore latest progress
+  const saved = localStorage.getItem('prog_' + id);
+  if (saved) {
+    try {
+      const p = JSON.parse(saved);
+      currentBook.progress = p.progress;
+    } catch (e) {}
+  }
 
   readerTitle.textContent = currentBook.name;
   libraryView.style.display = 'none';
   readerView.classList.add('active');
   showOverlay();
   updateSettingsUI();
-
-  loadingIndicator.classList.add('active');
 
   if (currentBook.type === 'cbz') {
     cbzViewer.style.display = 'flex';
@@ -330,35 +398,39 @@ async function openBook(id) {
   loadingIndicator.classList.remove('active');
 }
 
+// ULTRA-FAST ZERO-FREEZE CLOSE FUNCTION
 function closeReader() {
-  if (currentObjectUrl) {
-    URL.revokeObjectURL(currentObjectUrl);
-    currentObjectUrl = null;
+  // 1. Immediately reveal library without waiting
+  readerView.classList.remove('active');
+  libraryView.style.display = 'flex';
+  renderLibraryList();
+
+  // 2. Immediately revoke cached image URLs
+  for (const url of cbzCache.values()) {
+    URL.revokeObjectURL(url);
   }
-  if (currentObjectUrl2) {
-    URL.revokeObjectURL(currentObjectUrl2);
-    currentObjectUrl2 = null;
-  }
+  cbzCache.clear();
+
   cbzPage1.src = '';
   cbzPage2.src = '';
   resetZoom(false);
-  currentCbzZip = null;
-  currentCbzEntries = [];
 
-  if (currentEpubRendition) {
-    currentEpubRendition.destroy();
-    currentEpubRendition = null;
-  }
-  if (currentEpubBook) {
-    currentEpubBook.destroy();
-    currentEpubBook = null;
-  }
-  epubViewer.innerHTML = '';
+  // 3. Defer heavy garbage collection so UI stays 120fps smooth
+  setTimeout(() => {
+    currentCbzZip = null;
+    currentCbzEntries = [];
+    currentBook = null;
 
-  currentBook = null;
-  readerView.classList.remove('active');
-  libraryView.style.display = 'flex';
-  refreshLibrary();
+    if (currentEpubRendition) {
+      try { currentEpubRendition.destroy(); } catch (e) {}
+      currentEpubRendition = null;
+    }
+    if (currentEpubBook) {
+      try { currentEpubBook.destroy(); } catch (e) {}
+      currentEpubBook = null;
+    }
+    epubViewer.innerHTML = '';
+  }, 40);
 }
 
 closeReaderBtn.addEventListener('click', closeReader);
@@ -377,6 +449,12 @@ function hideOverlay() {
 // 5. CBZ Reader (Memory Streamer & Preloader)
 // ==========================================
 async function initCbzReader(book) {
+  // Clear any leftover cache
+  for (const url of cbzCache.values()) {
+    URL.revokeObjectURL(url);
+  }
+  cbzCache.clear();
+
   const zip = await JSZip.loadAsync(book.blob);
   currentCbzZip = zip;
 
@@ -403,11 +481,54 @@ async function initCbzReader(book) {
   await renderCbzPage(currentCbzIndex);
 }
 
-function preloadCbzPage(index) {
-  if (!currentCbzZip || index < 0 || index >= currentCbzEntries.length) return;
+// Fast Page Preloader with Browser GPU Decode
+async function getOrPreloadPageUrl(index) {
+  if (!currentCbzZip || index < 0 || index >= currentCbzEntries.length) return null;
+  if (cbzCache.has(index)) return cbzCache.get(index);
+
   const entryName = currentCbzEntries[index];
   const file = currentCbzZip.file(entryName);
-  if (file) file.async('blob').catch(() => {});
+  if (!file) return null;
+
+  try {
+    const blob = await file.async('blob');
+    const url = URL.createObjectURL(blob);
+
+    // Decode image in background so page turns never have pop-in
+    const img = new Image();
+    img.src = url;
+    if (img.decode) {
+      img.decode().catch(() => {});
+    }
+
+    cbzCache.set(index, url);
+    return url;
+  } catch (err) {
+    return null;
+  }
+}
+
+function triggerPreloadAround(centerIndex) {
+  // Preload +/- 2 pages
+  const offsets = [-2, -1, 1, 2];
+  if (cbzDisplayMode === 'double') {
+    offsets.push(3, 4);
+  }
+
+  for (const offset of offsets) {
+    const targetIdx = centerIndex + offset;
+    if (targetIdx >= 0 && targetIdx < currentCbzEntries.length) {
+      getOrPreloadPageUrl(targetIdx);
+    }
+  }
+
+  // Keep memory strictly bounded (prune pages far away)
+  for (const [idx, url] of cbzCache.entries()) {
+    if (Math.abs(idx - centerIndex) > 4) {
+      URL.revokeObjectURL(url);
+      cbzCache.delete(idx);
+    }
+  }
 }
 
 async function renderCbzPage(index) {
@@ -418,17 +539,11 @@ async function renderCbzPage(index) {
   }
 
   currentCbzIndex = index;
-  loadingIndicator.classList.add('active');
 
-  if (currentObjectUrl) URL.revokeObjectURL(currentObjectUrl);
-  if (currentObjectUrl2) URL.revokeObjectURL(currentObjectUrl2);
-
-  const entryName1 = currentCbzEntries[index];
-  const blob1 = await currentCbzZip.file(entryName1).async('blob');
-  currentObjectUrl = URL.createObjectURL(blob1);
+  const url1 = await getOrPreloadPageUrl(index);
+  cbzPage1.src = url1 || '';
 
   if (cbzDisplayMode === 'single' || index === 0 || index >= currentCbzEntries.length - 1) {
-    cbzPage1.src = currentObjectUrl;
     cbzPage1.style.display = 'block';
     cbzPage1.style.maxWidth = '100%';
     cbzPage2.style.display = 'none';
@@ -437,14 +552,10 @@ async function renderCbzPage(index) {
     pageSlider.value = index + 1;
     pageInfo.textContent = `${index + 1} / ${currentCbzEntries.length}`;
   } else {
-    const entryName2 = currentCbzEntries[index + 1];
-    const blob2 = await currentCbzZip.file(entryName2).async('blob');
-    currentObjectUrl2 = URL.createObjectURL(blob2);
+    const url2 = await getOrPreloadPageUrl(index + 1);
+    cbzPage2.src = url2 || '';
 
     cbzViewer.style.flexDirection = (cbzReadDirection === 'rtl') ? 'row-reverse' : 'row';
-
-    cbzPage1.src = currentObjectUrl;
-    cbzPage2.src = currentObjectUrl2;
 
     cbzPage1.style.display = 'block';
     cbzPage1.style.maxWidth = '50%';
@@ -455,16 +566,11 @@ async function renderCbzPage(index) {
     pageInfo.textContent = `${index + 1}-${index + 2} / ${currentCbzEntries.length}`;
   }
 
-  loadingIndicator.classList.remove('active');
   dbUpdateProgress(currentBook.id, { page: currentCbzIndex, total: currentCbzEntries.length });
   resetZoom(false);
 
-  // Preload next pages for zero latency
-  preloadCbzPage(index + 1);
-  if (cbzDisplayMode === 'double') {
-    preloadCbzPage(index + 2);
-    preloadCbzPage(index + 3);
-  }
+  // Preload +/- 2 pages instantly in background
+  triggerPreloadAround(index);
 }
 
 function cbzNext() {
@@ -561,7 +667,7 @@ function epubPrev() {
 }
 
 // ==========================================
-// 7. Navigation, Organic Gallery Swipe & Pinch-to-Zoom Engine
+// 7. Focal-Point Pinch Zoom & Organic Gallery Swipe
 // ==========================================
 function navigateNext() {
   hideOverlay();
@@ -577,12 +683,14 @@ function navigatePrev() {
   else if (currentBook.type === 'epub') epubPrev();
 }
 
-// Zoom & Pan State
+// Zoom & Focal Pan State
 let currentZoom = 1;
 let panX = 0;
 let panY = 0;
 let initialPanX = 0;
 let initialPanY = 0;
+let contentFocalX = 0;
+let contentFocalY = 0;
 
 function applyViewerTransform(animated = false) {
   if (!cbzViewer) return;
@@ -618,16 +726,27 @@ let lastTapY = 0;
 readerView.addEventListener('touchstart', (e) => {
   if (e.target.closest('.reader-top-bar, .reader-bottom-bar, .settings-modal')) return;
 
-  // 1. PINCH-TO-ZOOM (Two Fingers)
+  // 1. PINCH-TO-ZOOM AROUND FINGERS (Focal Point)
   if (e.touches.length === 2 && currentBook?.type === 'cbz') {
     isPinching = true;
     isTouching = false;
     isSwiping = false;
-    initialPinchDist = Math.hypot(
-      e.touches[0].clientX - e.touches[1].clientX,
-      e.touches[0].clientY - e.touches[1].clientY
-    );
+
+    const t1 = e.touches[0];
+    const t2 = e.touches[1];
+    initialPinchDist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
     startZoom = currentZoom;
+
+    const rect = readerCanvas.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+
+    const midX = (t1.clientX + t2.clientX) / 2;
+    const midY = (t1.clientY + t2.clientY) / 2;
+
+    // Anchor focal point on the image under finger midpoint
+    contentFocalX = (midX - centerX - panX) / currentZoom;
+    contentFocalY = (midY - centerY - panY) / currentZoom;
     return;
   }
 
@@ -645,15 +764,26 @@ readerView.addEventListener('touchstart', (e) => {
 }, { passive: true });
 
 readerView.addEventListener('touchmove', (e) => {
-  // Pinching
+  // Pinching: Zooms precisely into where fingers are placed
   if (isPinching && e.touches.length === 2 && currentBook?.type === 'cbz') {
     e.preventDefault();
-    const currentDist = Math.hypot(
-      e.touches[0].clientX - e.touches[1].clientX,
-      e.touches[0].clientY - e.touches[1].clientY
-    );
+    const t1 = e.touches[0];
+    const t2 = e.touches[1];
+    const currentDist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
     const scaleFactor = currentDist / (initialPinchDist || 1);
     currentZoom = Math.min(Math.max(1, startZoom * scaleFactor), 4.5);
+
+    const rect = readerCanvas.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+
+    const midX = (t1.clientX + t2.clientX) / 2;
+    const midY = (t1.clientY + t2.clientY) / 2;
+
+    // Keep point under fingers anchored in place
+    panX = midX - centerX - contentFocalX * currentZoom;
+    panY = midY - centerY - contentFocalY * currentZoom;
+
     applyViewerTransform(false);
     return;
   }
@@ -685,7 +815,6 @@ readerView.addEventListener('touchmove', (e) => {
 }, { passive: false });
 
 readerView.addEventListener('touchend', (e) => {
-  // Finished pinching
   if (isPinching) {
     if (e.touches.length < 2) isPinching = false;
     if (currentZoom < 1.05) {
@@ -702,13 +831,12 @@ readerView.addEventListener('touchend', (e) => {
   const dy = touch.clientY - touchStartY;
   const dt = Date.now() - touchStartTime;
 
-  // If zoomed in, keep pan position
   if (currentZoom > 1.05 && currentBook?.type === 'cbz') {
     return;
   }
 
   const screenWidth = window.innerWidth;
-  const swipeThreshold = screenWidth * 0.16; // 16% drag distance
+  const swipeThreshold = screenWidth * 0.16;
   const isFlick = (Math.abs(dx) > 35 && dt < 280);
 
   // 1. ORGANIC GALLERY SWIPE (Slide current out, slide next in)
@@ -718,16 +846,14 @@ readerView.addEventListener('touchend', (e) => {
     const targetAction = isMangaRtl ? (goingNext ? navigatePrev : navigateNext) : (goingNext ? navigateNext : navigatePrev);
 
     if (currentBook?.type === 'cbz') {
-      // Slide current page out smoothly
       cbzViewer.style.transition = 'transform 0.18s cubic-bezier(0.25, 1, 0.5, 1)';
       cbzViewer.style.transform = `translateX(${dx < 0 ? -screenWidth : screenWidth}px)`;
 
       setTimeout(() => {
         targetAction();
-        // Prepare new page from opposite side & slide in
         cbzViewer.style.transition = 'none';
         cbzViewer.style.transform = `translateX(${dx < 0 ? screenWidth * 0.35 : -screenWidth * 0.35}px)`;
-        void cbzViewer.offsetHeight; // force reflow
+        void cbzViewer.offsetHeight;
         cbzViewer.style.transition = 'transform 0.2s cubic-bezier(0.25, 1, 0.5, 1)';
         cbzViewer.style.transform = 'translateX(0px)';
       }, 160);
@@ -737,14 +863,14 @@ readerView.addEventListener('touchend', (e) => {
     return;
   }
 
-  // Reset slight swipe back to 0
+  // Snap back small drag
   if (isSwiping && currentBook?.type === 'cbz') {
     cbzViewer.style.transition = 'transform 0.2s cubic-bezier(0.25, 1, 0.5, 1)';
     cbzViewer.style.transform = 'translateX(0px)';
     return;
   }
 
-  // 2. DOUBLE TAP TO ZOOM (2.5x)
+  // 2. DOUBLE TAP TO ZOOM (Anchors on tap position)
   const now = Date.now();
   if (now - lastTapTime < 320 && Math.abs(touch.clientX - lastTapX) < 35 && Math.abs(touch.clientY - lastTapY) < 35) {
     lastTapTime = 0;
@@ -754,10 +880,13 @@ readerView.addEventListener('touchend', (e) => {
       } else {
         currentZoom = 2.4;
         const rect = readerCanvas.getBoundingClientRect();
-        const relX = touch.clientX - rect.left - rect.width / 2;
-        const relY = touch.clientY - rect.top - rect.height / 2;
-        panX = -relX * 1.4;
-        panY = -relY * 1.4;
+        const centerX = rect.left + rect.width / 2;
+        const centerY = rect.top + rect.height / 2;
+
+        const focalX = (touch.clientX - centerX - panX) / 1;
+        const focalY = (touch.clientY - centerY - panY) / 1;
+        panX = touch.clientX - centerX - focalX * currentZoom;
+        panY = touch.clientY - centerY - focalY * currentZoom;
         applyViewerTransform(true);
       }
     }
@@ -768,14 +897,12 @@ readerView.addEventListener('touchend', (e) => {
   lastTapY = touch.clientY;
 
   // 3. SINGLE TAP (Large Center Zone: 44% width)
-  // Left 28% = Prev / Next, Center 44% = Menu, Right 28% = Next / Prev
   const isMangaRtl = (currentBook && currentBook.type === 'cbz' && cbzReadDirection === 'rtl');
   if (touch.clientX < screenWidth * 0.28) {
     isMangaRtl ? navigateNext() : navigatePrev();
   } else if (touch.clientX > screenWidth * 0.72) {
     isMangaRtl ? navigatePrev() : navigateNext();
   } else {
-    // Tapped the middle!
     toggleOverlay();
   }
 });
@@ -892,5 +1019,5 @@ if ('serviceWorker' in navigator) {
   });
 }
 
-// Initial Boot
-refreshLibrary();
+// Initial Boot: Load metadata from disk once
+loadLibraryFromDisk();
