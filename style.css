@@ -447,6 +447,8 @@ body {
 /* Reader Smooth Transitions */
 #cbz-viewer {
   will-change: transform;
+  touch-action: none;
+  transform-origin: center center;
 }
 
 #cbz-viewer img {

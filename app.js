@@ -341,6 +341,7 @@ function closeReader() {
   }
   cbzPage1.src = '';
   cbzPage2.src = '';
+  resetZoom(false);
   currentCbzZip = null;
   currentCbzEntries = [];
 
@@ -456,6 +457,7 @@ async function renderCbzPage(index) {
 
   loadingIndicator.classList.remove('active');
   dbUpdateProgress(currentBook.id, { page: currentCbzIndex, total: currentCbzEntries.length });
+  resetZoom(false);
 
   // Preload next pages for zero latency
   preloadCbzPage(index + 1);
@@ -559,7 +561,7 @@ function epubPrev() {
 }
 
 // ==========================================
-// 7. Navigation & Unified Gesture Engine (MangaPlus Style)
+// 7. Navigation, Organic Gallery Swipe & Pinch-to-Zoom Engine
 // ==========================================
 function navigateNext() {
   hideOverlay();
@@ -575,90 +577,206 @@ function navigatePrev() {
   else if (currentBook.type === 'epub') epubPrev();
 }
 
-function handleReaderTap(clientX) {
-  const width = window.innerWidth;
-  const isMangaRtl = (currentBook && currentBook.type === 'cbz' && cbzReadDirection === 'rtl');
+// Zoom & Pan State
+let currentZoom = 1;
+let panX = 0;
+let panY = 0;
+let initialPanX = 0;
+let initialPanY = 0;
 
-  // Left 35%
-  if (clientX < width * 0.35) {
-    isMangaRtl ? navigateNext() : navigatePrev();
+function applyViewerTransform(animated = false) {
+  if (!cbzViewer) return;
+  if (animated) {
+    cbzViewer.style.transition = 'transform 0.22s cubic-bezier(0.25, 1, 0.5, 1)';
+  } else {
+    cbzViewer.style.transition = 'none';
   }
-  // Right 35%
-  else if (clientX > width * 0.65) {
-    isMangaRtl ? navigatePrev() : navigateNext();
-  }
-  // Center 30%
-  else {
-    toggleOverlay();
-  }
+  cbzViewer.style.transform = `translate(${panX}px, ${panY}px) scale(${currentZoom})`;
 }
 
-// Attach directly to readerView (covers entire fullscreen)
+function resetZoom(animated = true) {
+  currentZoom = 1;
+  panX = 0;
+  panY = 0;
+  applyViewerTransform(animated);
+}
+
+// Touch & Gesture Tracking
 let touchStartX = 0;
 let touchStartY = 0;
 let touchStartTime = 0;
 let isTouching = false;
 let isSwiping = false;
+let isPinching = false;
+let initialPinchDist = 0;
+let startZoom = 1;
+
+let lastTapTime = 0;
+let lastTapX = 0;
+let lastTapY = 0;
 
 readerView.addEventListener('touchstart', (e) => {
-  // Ignore touches on navigation controls, sliders or settings
   if (e.target.closest('.reader-top-bar, .reader-bottom-bar, .settings-modal')) return;
-  if (e.touches.length !== 1) return;
 
-  isTouching = true;
-  isSwiping = false;
-  touchStartX = e.touches[0].clientX;
-  touchStartY = e.touches[0].clientY;
-  touchStartTime = Date.now();
+  // 1. PINCH-TO-ZOOM (Two Fingers)
+  if (e.touches.length === 2 && currentBook?.type === 'cbz') {
+    isPinching = true;
+    isTouching = false;
+    isSwiping = false;
+    initialPinchDist = Math.hypot(
+      e.touches[0].clientX - e.touches[1].clientX,
+      e.touches[0].clientY - e.touches[1].clientY
+    );
+    startZoom = currentZoom;
+    return;
+  }
+
+  // 2. SINGLE TOUCH
+  if (e.touches.length === 1) {
+    isPinching = false;
+    isTouching = true;
+    isSwiping = false;
+    touchStartX = e.touches[0].clientX;
+    touchStartY = e.touches[0].clientY;
+    touchStartTime = Date.now();
+    initialPanX = panX;
+    initialPanY = panY;
+  }
 }, { passive: true });
 
 readerView.addEventListener('touchmove', (e) => {
+  // Pinching
+  if (isPinching && e.touches.length === 2 && currentBook?.type === 'cbz') {
+    e.preventDefault();
+    const currentDist = Math.hypot(
+      e.touches[0].clientX - e.touches[1].clientX,
+      e.touches[0].clientY - e.touches[1].clientY
+    );
+    const scaleFactor = currentDist / (initialPinchDist || 1);
+    currentZoom = Math.min(Math.max(1, startZoom * scaleFactor), 4.5);
+    applyViewerTransform(false);
+    return;
+  }
+
   if (!isTouching || e.touches.length !== 1) return;
+
   const dx = e.touches[0].clientX - touchStartX;
   const dy = e.touches[0].clientY - touchStartY;
 
+  // Panning when zoomed in
+  if (currentZoom > 1.05 && currentBook?.type === 'cbz') {
+    e.preventDefault();
+    panX = initialPanX + dx;
+    panY = initialPanY + dy;
+    applyViewerTransform(false);
+    return;
+  }
+
+  // Gallery Swipe Tracking (1:1 finger drag)
   if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
     isSwiping = true;
   }
 
-  // Smooth horizontal drag resistance like MangaPlus
   if (Math.abs(dx) > Math.abs(dy) && currentBook?.type === 'cbz') {
     e.preventDefault();
-    cbzViewer.style.transform = `translateX(${dx * 0.3}px)`;
+    cbzViewer.style.transition = 'none';
+    cbzViewer.style.transform = `translateX(${dx}px)`;
   }
 }, { passive: false });
 
 readerView.addEventListener('touchend', (e) => {
+  // Finished pinching
+  if (isPinching) {
+    if (e.touches.length < 2) isPinching = false;
+    if (currentZoom < 1.05) {
+      resetZoom(true);
+    }
+    return;
+  }
+
   if (!isTouching) return;
   isTouching = false;
 
   const touch = e.changedTouches[0];
   const dx = touch.clientX - touchStartX;
   const dy = touch.clientY - touchStartY;
+  const dt = Date.now() - touchStartTime;
 
-  // Spring back viewer transform
-  if (currentBook?.type === 'cbz') {
-    cbzViewer.style.transition = 'transform 0.15s ease-out';
-    cbzViewer.style.transform = 'translateX(0)';
-    setTimeout(() => { cbzViewer.style.transition = 'none'; }, 150);
+  // If zoomed in, keep pan position
+  if (currentZoom > 1.05 && currentBook?.type === 'cbz') {
+    return;
   }
 
-  // 1. SWIPE DETECTION (> 35px horizontal movement)
-  if (isSwiping && Math.abs(dx) > 35 && Math.abs(dx) > Math.abs(dy)) {
+  const screenWidth = window.innerWidth;
+  const swipeThreshold = screenWidth * 0.16; // 16% drag distance
+  const isFlick = (Math.abs(dx) > 35 && dt < 280);
+
+  // 1. ORGANIC GALLERY SWIPE (Slide current out, slide next in)
+  if (isSwiping && (Math.abs(dx) > swipeThreshold || isFlick) && Math.abs(dx) > Math.abs(dy)) {
     const isMangaRtl = (currentBook?.type === 'cbz' && cbzReadDirection === 'rtl');
-    if (dx < 0) {
-      // Swiped Left (finger moved right to left) -> NEXT in LTR
-      isMangaRtl ? navigatePrev() : navigateNext();
+    const goingNext = (dx < 0);
+    const targetAction = isMangaRtl ? (goingNext ? navigatePrev : navigateNext) : (goingNext ? navigateNext : navigatePrev);
+
+    if (currentBook?.type === 'cbz') {
+      // Slide current page out smoothly
+      cbzViewer.style.transition = 'transform 0.18s cubic-bezier(0.25, 1, 0.5, 1)';
+      cbzViewer.style.transform = `translateX(${dx < 0 ? -screenWidth : screenWidth}px)`;
+
+      setTimeout(() => {
+        targetAction();
+        // Prepare new page from opposite side & slide in
+        cbzViewer.style.transition = 'none';
+        cbzViewer.style.transform = `translateX(${dx < 0 ? screenWidth * 0.35 : -screenWidth * 0.35}px)`;
+        void cbzViewer.offsetHeight; // force reflow
+        cbzViewer.style.transition = 'transform 0.2s cubic-bezier(0.25, 1, 0.5, 1)';
+        cbzViewer.style.transform = 'translateX(0px)';
+      }, 160);
     } else {
-      // Swiped Right (finger moved left to right) -> PREV in LTR
-      isMangaRtl ? navigateNext() : navigatePrev();
+      targetAction();
     }
     return;
   }
 
-  // 2. TAP DETECTION
-  if (!isSwiping || (Math.abs(dx) < 15 && Math.abs(dy) < 15)) {
-    handleReaderTap(touch.clientX);
+  // Reset slight swipe back to 0
+  if (isSwiping && currentBook?.type === 'cbz') {
+    cbzViewer.style.transition = 'transform 0.2s cubic-bezier(0.25, 1, 0.5, 1)';
+    cbzViewer.style.transform = 'translateX(0px)';
+    return;
+  }
+
+  // 2. DOUBLE TAP TO ZOOM (2.5x)
+  const now = Date.now();
+  if (now - lastTapTime < 320 && Math.abs(touch.clientX - lastTapX) < 35 && Math.abs(touch.clientY - lastTapY) < 35) {
+    lastTapTime = 0;
+    if (currentBook?.type === 'cbz') {
+      if (currentZoom > 1.05) {
+        resetZoom(true);
+      } else {
+        currentZoom = 2.4;
+        const rect = readerCanvas.getBoundingClientRect();
+        const relX = touch.clientX - rect.left - rect.width / 2;
+        const relY = touch.clientY - rect.top - rect.height / 2;
+        panX = -relX * 1.4;
+        panY = -relY * 1.4;
+        applyViewerTransform(true);
+      }
+    }
+    return;
+  }
+  lastTapTime = now;
+  lastTapX = touch.clientX;
+  lastTapY = touch.clientY;
+
+  // 3. SINGLE TAP (Large Center Zone: 44% width)
+  // Left 28% = Prev / Next, Center 44% = Menu, Right 28% = Next / Prev
+  const isMangaRtl = (currentBook && currentBook.type === 'cbz' && cbzReadDirection === 'rtl');
+  if (touch.clientX < screenWidth * 0.28) {
+    isMangaRtl ? navigateNext() : navigatePrev();
+  } else if (touch.clientX > screenWidth * 0.72) {
+    isMangaRtl ? navigatePrev() : navigateNext();
+  } else {
+    // Tapped the middle!
+    toggleOverlay();
   }
 });
 
@@ -666,7 +784,16 @@ readerView.addEventListener('touchend', (e) => {
 readerView.addEventListener('click', (e) => {
   if (e.target.closest('.reader-top-bar, .reader-bottom-bar, .settings-modal')) return;
   if ('ontouchstart' in window) return;
-  handleReaderTap(e.clientX);
+
+  const screenWidth = window.innerWidth;
+  const isMangaRtl = (currentBook && currentBook.type === 'cbz' && cbzReadDirection === 'rtl');
+  if (e.clientX < screenWidth * 0.28) {
+    isMangaRtl ? navigateNext() : navigatePrev();
+  } else if (e.clientX > screenWidth * 0.72) {
+    isMangaRtl ? navigatePrev() : navigateNext();
+  } else {
+    toggleOverlay();
+  }
 });
 
 // Keyboard support
