@@ -23,6 +23,13 @@
 
   <!-- ================== LIBRARY VIEW ================== -->
   <div id="library-view">
+    
+    <!-- Pull to Refresh Banner -->
+    <div id="ptr-indicator" class="ptr-indicator">
+      <div class="ptr-spinner"></div>
+      <span id="ptr-text">Nach unten ziehen zum Aktualisieren</span>
+    </div>
+
     <header class="library-header">
       <h1>Meine Bücher</h1>
       <button id="add-book-btn" class="btn-add">
@@ -63,11 +70,6 @@
       
       <!-- EPUB HTML Viewer -->
       <div id="epub-viewer" style="display: none;"></div>
-
-      <!-- Invisible Tap Zones (Previous, Menu, Next) -->
-      <div class="tap-zone left" id="tap-prev"></div>
-      <div class="tap-zone middle" id="tap-menu"></div>
-      <div class="tap-zone right" id="tap-next"></div>
     </div>
 
     <!-- Controls Overlay -->
@@ -109,17 +111,17 @@
       </div>
       <div id="cbz-settings" style="display: none; padding: 16px;">
         <div class="setting-group">
-          <label>Layout (Comic/Manga)</label>
+          <label>Layout</label>
           <div class="toggle-group">
             <button class="toggle-btn active" data-opt="single" id="btn-layout-single">1 Seite</button>
             <button class="toggle-btn" data-opt="double" id="btn-layout-double">2 Seiten</button>
           </div>
         </div>
         <div class="setting-group" style="margin-top: 16px;">
-          <label>Leserichtung</label>
+          <label>Tippen & Wischen</label>
           <div class="toggle-group">
-            <button class="toggle-btn active" data-opt="rtl" id="btn-dir-rtl">← Manga (RTL)</button>
-            <button class="toggle-btn" data-opt="ltr" id="btn-dir-ltr">Comic (LTR) →</button>
+            <button class="toggle-btn active" data-opt="ltr" id="btn-dir-ltr">Rechts weiter 👉</button>
+            <button class="toggle-btn" data-opt="rtl" id="btn-dir-rtl">Links weiter (Manga) 👈</button>
           </div>
         </div>
       </div>

@@ -87,9 +87,10 @@ let currentCbzEntries = [];
 let currentCbzIndex = 0;
 let currentObjectUrl = null;
 let currentObjectUrl2 = null;
-let cbzDisplayMode = localStorage.getItem('cbzDisplayMode') || 'single';
-let cbzReadDirection = localStorage.getItem('cbzReadDirection') || 'rtl';
 
+// Settings: default 'ltr' so right tap / left swipe = NEXT (Weiter)
+let cbzDisplayMode = localStorage.getItem('cbzDisplayMode') || 'single';
+let cbzReadDirection = localStorage.getItem('cbzReadDirection') || 'ltr';
 
 let currentEpubBook = null;
 let currentEpubRendition = null;
@@ -112,7 +113,10 @@ const loadingIndicator = document.getElementById('loading');
 const cbzViewer = document.getElementById('cbz-viewer');
 const cbzPage1 = document.getElementById('cbz-page-1');
 const cbzPage2 = document.getElementById('cbz-page-2');
+const epubViewer = document.getElementById('epub-viewer');
+const readerCanvas = document.querySelector('.reader-canvas-container');
 
+// Settings Elements
 const settingsBtn = document.getElementById('settings-btn');
 const settingsModal = document.getElementById('settings-modal');
 const closeSettingsBtn = document.getElementById('close-settings-btn');
@@ -121,33 +125,81 @@ const btnLayoutSingle = document.getElementById('btn-layout-single');
 const btnLayoutDouble = document.getElementById('btn-layout-double');
 const btnDirRtl = document.getElementById('btn-dir-rtl');
 const btnDirLtr = document.getElementById('btn-dir-ltr');
+const forceReloadBtn = document.getElementById('force-reload-btn');
 
 function updateSettingsUI() {
-  btnLayoutSingle.classList.toggle('active', cbzDisplayMode === 'single');
-  btnLayoutDouble.classList.toggle('active', cbzDisplayMode === 'double');
-  btnDirRtl.classList.toggle('active', cbzReadDirection === 'rtl');
-  btnDirLtr.classList.toggle('active', cbzReadDirection === 'ltr');
+  if (btnLayoutSingle) btnLayoutSingle.classList.toggle('active', cbzDisplayMode === 'single');
+  if (btnLayoutDouble) btnLayoutDouble.classList.toggle('active', cbzDisplayMode === 'double');
+  if (btnDirLtr) btnDirLtr.classList.toggle('active', cbzReadDirection === 'ltr');
+  if (btnDirRtl) btnDirRtl.classList.toggle('active', cbzReadDirection === 'rtl');
 }
 
-settingsBtn.addEventListener('click', (e) => {
-  e.stopPropagation();
-  settingsModal.style.display = 'flex';
-  cbzSettings.style.display = currentBook && currentBook.type === 'cbz' ? 'block' : 'none';
-  updateSettingsUI();
-});
-closeSettingsBtn.addEventListener('click', () => {
-  settingsModal.style.display = 'none';
-});
-btnLayoutSingle.addEventListener('click', () => { cbzDisplayMode = 'single'; localStorage.setItem('cbzDisplayMode', cbzDisplayMode); updateSettingsUI(); if(currentBook?.type==='cbz') renderCbzPage(currentCbzIndex); });
-btnLayoutDouble.addEventListener('click', () => { cbzDisplayMode = 'double'; localStorage.setItem('cbzDisplayMode', cbzDisplayMode); updateSettingsUI(); if(currentBook?.type==='cbz') renderCbzPage(currentCbzIndex); });
-btnDirRtl.addEventListener('click', () => { cbzReadDirection = 'rtl'; localStorage.setItem('cbzReadDirection', cbzReadDirection); updateSettingsUI(); if(currentBook?.type==='cbz') renderCbzPage(currentCbzIndex); });
-btnDirLtr.addEventListener('click', () => { cbzReadDirection = 'ltr'; localStorage.setItem('cbzReadDirection', cbzReadDirection); updateSettingsUI(); if(currentBook?.type==='cbz') renderCbzPage(currentCbzIndex); });
+if (settingsBtn) {
+  settingsBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    settingsModal.style.display = 'flex';
+    if (cbzSettings) cbzSettings.style.display = currentBook && currentBook.type === 'cbz' ? 'block' : 'none';
+    updateSettingsUI();
+  });
+}
+if (closeSettingsBtn) {
+  closeSettingsBtn.addEventListener('click', () => {
+    settingsModal.style.display = 'none';
+  });
+}
+if (settingsModal) {
+  settingsModal.addEventListener('click', (e) => {
+    if (e.target === settingsModal) settingsModal.style.display = 'none';
+  });
+}
 
-const epubViewer = document.getElementById('epub-viewer');
+if (btnLayoutSingle) {
+  btnLayoutSingle.addEventListener('click', () => {
+    cbzDisplayMode = 'single';
+    localStorage.setItem('cbzDisplayMode', 'single');
+    updateSettingsUI();
+    if (currentBook?.type === 'cbz') renderCbzPage(currentCbzIndex);
+  });
+}
+if (btnLayoutDouble) {
+  btnLayoutDouble.addEventListener('click', () => {
+    cbzDisplayMode = 'double';
+    localStorage.setItem('cbzDisplayMode', 'double');
+    updateSettingsUI();
+    if (currentBook?.type === 'cbz') renderCbzPage(currentCbzIndex);
+  });
+}
+if (btnDirLtr) {
+  btnDirLtr.addEventListener('click', () => {
+    cbzReadDirection = 'ltr';
+    localStorage.setItem('cbzReadDirection', 'ltr');
+    updateSettingsUI();
+    if (currentBook?.type === 'cbz') renderCbzPage(currentCbzIndex);
+  });
+}
+if (btnDirRtl) {
+  btnDirRtl.addEventListener('click', () => {
+    cbzReadDirection = 'rtl';
+    localStorage.setItem('cbzReadDirection', 'rtl');
+    updateSettingsUI();
+    if (currentBook?.type === 'cbz') renderCbzPage(currentCbzIndex);
+  });
+}
 
-const tapPrev = document.getElementById('tap-prev');
-const tapMenu = document.getElementById('tap-menu');
-const tapNext = document.getElementById('tap-next');
+if (forceReloadBtn) {
+  forceReloadBtn.addEventListener('click', async () => {
+    forceReloadBtn.textContent = 'Aktualisiere...';
+    if ('serviceWorker' in navigator) {
+      try {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        for (let r of regs) await r.unregister();
+        const keys = await caches.keys();
+        for (let k of keys) await caches.delete(k);
+      } catch (e) {}
+    }
+    window.location.reload(true);
+  });
+}
 
 // ==========================================
 // 3. Library Management
@@ -162,7 +214,6 @@ function formatBytes(bytes) {
 
 async function refreshLibrary() {
   const books = await dbGetAllBooks();
-  // Sort by last read descending
   books.sort((a, b) => (b.lastReadAt || 0) - (a.lastReadAt || 0));
 
   bookListEl.innerHTML = '';
@@ -262,6 +313,7 @@ async function openBook(id) {
   libraryView.style.display = 'none';
   readerView.classList.add('active');
   showOverlay();
+  updateSettingsUI();
 
   loadingIndicator.classList.add('active');
 
@@ -279,7 +331,6 @@ async function openBook(id) {
 }
 
 function closeReader() {
-  // Cleanup CBZ
   if (currentObjectUrl) {
     URL.revokeObjectURL(currentObjectUrl);
     currentObjectUrl = null;
@@ -293,7 +344,6 @@ function closeReader() {
   currentCbzZip = null;
   currentCbzEntries = [];
 
-  // Cleanup EPUB
   if (currentEpubRendition) {
     currentEpubRendition.destroy();
     currentEpubRendition = null;
@@ -312,21 +362,18 @@ function closeReader() {
 
 closeReaderBtn.addEventListener('click', closeReader);
 
-// Overlay UI Toggle
 function toggleOverlay() {
   readerOverlay.classList.toggle('visible');
 }
-
 function showOverlay() {
   readerOverlay.classList.add('visible');
 }
-
 function hideOverlay() {
   readerOverlay.classList.remove('visible');
 }
 
 // ==========================================
-// 5. CBZ Reader (Minimal RAM Streamer)
+// 5. CBZ Reader (Memory Streamer & Preloader)
 // ==========================================
 async function initCbzReader(book) {
   const zip = await JSZip.loadAsync(book.blob);
@@ -344,7 +391,6 @@ async function initCbzReader(book) {
     }
   });
 
-  // Natural sort (page 1, 2, ... 10)
   entries.sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
   currentCbzEntries = entries;
 
@@ -356,13 +402,20 @@ async function initCbzReader(book) {
   await renderCbzPage(currentCbzIndex);
 }
 
+function preloadCbzPage(index) {
+  if (!currentCbzZip || index < 0 || index >= currentCbzEntries.length) return;
+  const entryName = currentCbzEntries[index];
+  const file = currentCbzZip.file(entryName);
+  if (file) file.async('blob').catch(() => {});
+}
+
 async function renderCbzPage(index) {
   if (index < 0 || index >= currentCbzEntries.length) return;
-  
+
   if (cbzDisplayMode === 'double' && index > 0) {
-    if (index % 2 === 0) index = index - 1; 
+    if (index % 2 === 0) index = index - 1;
   }
-  
+
   currentCbzIndex = index;
   loadingIndicator.classList.add('active');
 
@@ -379,48 +432,51 @@ async function renderCbzPage(index) {
     cbzPage1.style.maxWidth = '100%';
     cbzPage2.style.display = 'none';
     cbzViewer.style.flexDirection = 'row';
-    
+
     pageSlider.value = index + 1;
     pageInfo.textContent = `${index + 1} / ${currentCbzEntries.length}`;
   } else {
     const entryName2 = currentCbzEntries[index + 1];
     const blob2 = await currentCbzZip.file(entryName2).async('blob');
     currentObjectUrl2 = URL.createObjectURL(blob2);
-    
-    if (cbzReadDirection === 'rtl') {
-      cbzViewer.style.flexDirection = 'row-reverse';
-    } else {
-      cbzViewer.style.flexDirection = 'row';
-    }
-    
+
+    cbzViewer.style.flexDirection = (cbzReadDirection === 'rtl') ? 'row-reverse' : 'row';
+
     cbzPage1.src = currentObjectUrl;
     cbzPage2.src = currentObjectUrl2;
-    
+
     cbzPage1.style.display = 'block';
     cbzPage1.style.maxWidth = '50%';
     cbzPage2.style.display = 'block';
     cbzPage2.style.maxWidth = '50%';
-    
+
     pageSlider.value = index + 2;
     pageInfo.textContent = `${index + 1}-${index + 2} / ${currentCbzEntries.length}`;
   }
 
   loadingIndicator.classList.remove('active');
   dbUpdateProgress(currentBook.id, { page: currentCbzIndex, total: currentCbzEntries.length });
+
+  // Preload next pages for zero latency
+  preloadCbzPage(index + 1);
+  if (cbzDisplayMode === 'double') {
+    preloadCbzPage(index + 2);
+    preloadCbzPage(index + 3);
+  }
 }
 
 function cbzNext() {
+  if (currentCbzIndex >= currentCbzEntries.length - 1) return;
   const step = (cbzDisplayMode === 'double' && currentCbzIndex > 0) ? 2 : 1;
-  if (currentCbzIndex + step < currentCbzEntries.length) {
-    renderCbzPage(currentCbzIndex + step);
-  }
+  const target = Math.min(currentCbzEntries.length - 1, currentCbzIndex + step);
+  renderCbzPage(target);
 }
 
 function cbzPrev() {
-  if (currentCbzIndex > 0) {
-    const step = (cbzDisplayMode === 'double' && currentCbzIndex > 1) ? 2 : 1;
-    renderCbzPage(currentCbzIndex - step);
-  }
+  if (currentCbzIndex <= 0) return;
+  const step = (cbzDisplayMode === 'double' && currentCbzIndex > 1) ? 2 : 1;
+  const target = Math.max(0, currentCbzIndex - step);
+  renderCbzPage(target);
 }
 
 pageSlider.addEventListener('input', (e) => {
@@ -440,7 +496,7 @@ pageSlider.addEventListener('input', (e) => {
 async function initEpubReader(book) {
   const arrayBuffer = await book.blob.arrayBuffer();
   currentEpubBook = ePub(arrayBuffer);
-  
+
   currentEpubRendition = currentEpubBook.renderTo('epub-viewer', {
     width: '100%',
     height: '100%',
@@ -448,7 +504,6 @@ async function initEpubReader(book) {
     flow: 'paginated'
   });
 
-  // Dark Theme Styling
   currentEpubRendition.themes.default({
     'body': {
       'background': '#121212 !important',
@@ -457,12 +512,8 @@ async function initEpubReader(book) {
       'line-height': '1.6 !important',
       'padding': '16px !important'
     },
-    'p, span, div, h1, h2, h3, h4, h5, h6': {
-      'color': '#e0e0e0 !important'
-    },
-    'a': {
-      'color': '#60a5fa !important'
-    }
+    'p, span, div, h1, h2, h3, h4, h5, h6': { 'color': '#e0e0e0 !important' },
+    'a': { 'color': '#60a5fa !important' }
   });
 
   pageSlider.min = 1;
@@ -472,14 +523,6 @@ async function initEpubReader(book) {
   const savedCfi = currentBook.progress ? currentBook.progress.cfi : undefined;
   await currentEpubRendition.display(savedCfi);
 
-  // Hook touch/click inside the EPUB iframe
-  currentEpubRendition.on('rendered', (section, view) => {
-    if (view && view.document) {
-      view.document.addEventListener('click', handlePageClick);
-    }
-  });
-
-  // Generate locations for slider / percentage
   currentEpubBook.ready.then(() => {
     return currentEpubBook.locations.generate(1024);
   }).then(() => {
@@ -504,39 +547,20 @@ async function initEpubReader(book) {
       pageInfo.textContent = location.start.displayed ? `${location.start.displayed.page}` : '';
     }
 
-    dbUpdateProgress(currentBook.id, {
-      cfi: cfi,
-      percentage: percentage
-    });
+    dbUpdateProgress(currentBook.id, { cfi: cfi, percentage: percentage });
   });
 }
 
 function epubNext() {
   if (currentEpubRendition) currentEpubRendition.next();
 }
-
 function epubPrev() {
   if (currentEpubRendition) currentEpubRendition.prev();
 }
 
 // ==========================================
-// 7. Navigation & Tap Zones
+// 7. Navigation & Unified Gesture Engine (MangaPlus Style)
 // ==========================================
-function handlePageClick(e) {
-  const width = window.innerWidth;
-  const x = e.clientX || (e.touches && e.touches[0].clientX);
-  if (!x) return;
-
-  const isRtl = (currentBook && currentBook.type === 'cbz' && cbzReadDirection === 'rtl');
-  if (x < width * 0.3) {
-    isRtl ? navigateNext() : navigatePrev();
-  } else if (x > width * 0.7) {
-    isRtl ? navigatePrev() : navigateNext();
-  } else {
-    toggleOverlay();
-  }
-}
-
 function navigateNext() {
   hideOverlay();
   if (!currentBook) return;
@@ -551,15 +575,95 @@ function navigatePrev() {
   else if (currentBook.type === 'epub') epubPrev();
 }
 
-tapPrev.addEventListener('click', () => {
-  const isRtl = (currentBook && currentBook.type === 'cbz' && cbzReadDirection === 'rtl');
-  isRtl ? navigateNext() : navigatePrev();
+function handleReaderTap(clientX) {
+  const width = window.innerWidth;
+  const isMangaRtl = (currentBook && currentBook.type === 'cbz' && cbzReadDirection === 'rtl');
+
+  // Left 35%
+  if (clientX < width * 0.35) {
+    isMangaRtl ? navigateNext() : navigatePrev();
+  }
+  // Right 35%
+  else if (clientX > width * 0.65) {
+    isMangaRtl ? navigatePrev() : navigateNext();
+  }
+  // Center 30%
+  else {
+    toggleOverlay();
+  }
+}
+
+// Touch & Swipe state
+let touchStartX = 0;
+let touchStartY = 0;
+let touchStartTime = 0;
+let isTouching = false;
+let isSwiping = false;
+
+readerCanvas.addEventListener('touchstart', (e) => {
+  if (e.touches.length !== 1) return;
+  isTouching = true;
+  isSwiping = false;
+  touchStartX = e.touches[0].clientX;
+  touchStartY = e.touches[0].clientY;
+  touchStartTime = Date.now();
+}, { passive: true });
+
+readerCanvas.addEventListener('touchmove', (e) => {
+  if (!isTouching || e.touches.length !== 1) return;
+  const dx = e.touches[0].clientX - touchStartX;
+  const dy = e.touches[0].clientY - touchStartY;
+
+  if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
+    isSwiping = true;
+  }
+
+  // Smooth horizontal drag resistance
+  if (Math.abs(dx) > Math.abs(dy) && currentBook?.type === 'cbz') {
+    e.preventDefault();
+    cbzViewer.style.transform = `translateX(${dx * 0.3}px)`;
+  }
+}, { passive: false });
+
+readerCanvas.addEventListener('touchend', (e) => {
+  if (!isTouching) return;
+  isTouching = false;
+
+  const touch = e.changedTouches[0];
+  const dx = touch.clientX - touchStartX;
+  const dy = touch.clientY - touchStartY;
+
+  // Spring back viewer transform
+  if (currentBook?.type === 'cbz') {
+    cbzViewer.style.transition = 'transform 0.15s ease-out';
+    cbzViewer.style.transform = 'translateX(0)';
+    setTimeout(() => { cbzViewer.style.transition = 'none'; }, 150);
+  }
+
+  // 1. SWIPE DETECTION (> 35px horizontal movement)
+  if (isSwiping && Math.abs(dx) > 35 && Math.abs(dx) > Math.abs(dy)) {
+    const isMangaRtl = (currentBook?.type === 'cbz' && cbzReadDirection === 'rtl');
+    if (dx < 0) {
+      // Swiped Left (finger moved right to left)
+      isMangaRtl ? navigatePrev() : navigateNext();
+    } else {
+      // Swiped Right (finger moved left to right)
+      isMangaRtl ? navigateNext() : navigatePrev();
+    }
+    return;
+  }
+
+  // 2. TAP DETECTION
+  if (!isSwiping || (Math.abs(dx) < 15 && Math.abs(dy) < 15)) {
+    handleReaderTap(touch.clientX);
+  }
 });
-tapNext.addEventListener('click', () => {
-  const isRtl = (currentBook && currentBook.type === 'cbz' && cbzReadDirection === 'rtl');
-  isRtl ? navigatePrev() : navigateNext();
+
+// Desktop Click Fallback
+readerCanvas.addEventListener('click', (e) => {
+  if ('ontouchstart' in window) return;
+  handleReaderTap(e.clientX);
 });
-tapMenu.addEventListener('click', toggleOverlay);
 
 // Keyboard support
 window.addEventListener('keydown', (e) => {
@@ -574,74 +678,86 @@ window.addEventListener('keydown', (e) => {
 });
 
 // ==========================================
-
+// 8. Pull-To-Refresh (Classic Reload Banner)
 // ==========================================
-// 7.5 Swipe / Slide Detection
-// ==========================================
-let touchStartX = 0;
-let touchEndX = 0;
-let touchStartY = 0;
-let touchEndY = 0;
-const readerCanvas = document.querySelector('.reader-canvas-container');
+const ptrIndicator = document.getElementById('ptr-indicator');
+const ptrText = document.getElementById('ptr-text');
+const libraryContent = document.querySelector('.library-content');
 
-readerCanvas.addEventListener('touchstart', (e) => {
-  touchStartX = e.changedTouches[0].screenX;
-  touchStartY = e.changedTouches[0].screenY;
-}, { passive: true });
+let ptrStartY = 0;
+let ptrCurrentY = 0;
+let ptrPulling = false;
+const PTR_THRESHOLD = 80;
 
-readerCanvas.addEventListener('touchend', (e) => {
-  touchEndX = e.changedTouches[0].screenX;
-  touchEndY = e.changedTouches[0].screenY;
-  handleSwipe();
-}, { passive: true });
-
-function handleSwipe() {
-  if (!currentBook) return;
-  
-  const diffX = touchEndX - touchStartX;
-  const diffY = touchEndY - touchStartY;
-  
-  // Ignore vertical swipes (might be scrolling if zoomed)
-  if (Math.abs(diffY) > Math.abs(diffX)) return;
-  
-  // Swipe threshold (min distance)
-  if (Math.abs(diffX) < 40) return;
-  
-  const isRtl = (currentBook.type === 'cbz' && cbzReadDirection === 'rtl');
-  
-  if (diffX < 0) {
-    // Swipe Left (<-)
-    isRtl ? navigatePrev() : navigateNext();
-  } else {
-    // Swipe Right (->)
-    isRtl ? navigateNext() : navigatePrev();
+window.addEventListener('touchstart', (e) => {
+  if (readerView.classList.contains('active')) return;
+  if (libraryContent && libraryContent.scrollTop <= 0) {
+    ptrStartY = e.touches[0].clientY;
+    ptrPulling = true;
   }
-}
+}, { passive: true });
 
-// 8. Service Worker Registration
+window.addEventListener('touchmove', (e) => {
+  if (!ptrPulling) return;
+  ptrCurrentY = e.touches[0].clientY;
+  const diffY = ptrCurrentY - ptrStartY;
+
+  if (diffY > 0 && libraryContent && libraryContent.scrollTop <= 0) {
+    const pullHeight = Math.min(diffY * 0.45, 65);
+    if (ptrIndicator) {
+      ptrIndicator.style.height = `${pullHeight}px`;
+      if (diffY > PTR_THRESHOLD) {
+        ptrIndicator.classList.add('active');
+        ptrText.textContent = 'Loslassen zum Aktualisieren';
+      } else {
+        ptrIndicator.classList.remove('active');
+        ptrText.textContent = 'Nach unten ziehen zum Aktualisieren';
+      }
+    }
+  } else if (ptrIndicator) {
+    ptrIndicator.style.height = '0px';
+  }
+}, { passive: true });
+
+window.addEventListener('touchend', () => {
+  if (!ptrPulling) return;
+  ptrPulling = false;
+  const diffY = ptrCurrentY - ptrStartY;
+
+  if (diffY > PTR_THRESHOLD && libraryContent && libraryContent.scrollTop <= 0) {
+    if (ptrIndicator) {
+      ptrIndicator.style.height = '48px';
+      ptrIndicator.classList.add('active');
+      ptrText.textContent = 'Wird aktualisiert...';
+    }
+
+    setTimeout(async () => {
+      if ('serviceWorker' in navigator) {
+        try {
+          const regs = await navigator.serviceWorker.getRegistrations();
+          for (let r of regs) await r.unregister();
+          const keys = await caches.keys();
+          for (let k of keys) await caches.delete(k);
+        } catch (e) {}
+      }
+      window.location.reload(true);
+    }, 350);
+  } else if (ptrIndicator) {
+    ptrIndicator.style.height = '0px';
+    ptrIndicator.classList.remove('active');
+  }
+  ptrStartY = 0;
+  ptrCurrentY = 0;
+});
+
+// ==========================================
+// 9. Service Worker Registration
 // ==========================================
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('./sw.js').catch((err) => {
       console.warn('Service Worker Registrierung fehlgeschlagen:', err);
     });
-  });
-}
-
-
-const forceReloadBtn = document.getElementById('force-reload-btn');
-if (forceReloadBtn) {
-  forceReloadBtn.addEventListener('click', () => {
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.getRegistrations().then(function(registrations) {
-        for(let registration of registrations) {
-          registration.unregister();
-        }
-        window.location.reload(true);
-      });
-    } else {
-      window.location.reload(true);
-    }
   });
 }
 
