@@ -455,3 +455,48 @@ body {
   pointer-events: none !important;
   -webkit-touch-callout: none !important;
 }
+
+/* 3-Panel Seamless Carousel Styles */
+#cbz-carousel {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  touch-action: none;
+}
+#cbz-track {
+  display: flex;
+  width: 300%;
+  height: 100%;
+  transform: translateX(-33.333333%);
+  will-change: transform;
+}
+.carousel-panel {
+  width: 33.333333%;
+  height: 100%;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.panel-inner {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  transform-origin: center center;
+  will-change: transform;
+}
+.comic-img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  user-select: none;
+  -webkit-user-drag: none;
+  pointer-events: none;
+  -webkit-touch-callout: none;
+}

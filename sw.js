@@ -1,4 +1,4 @@
-const CACHE_NAME = 'minimal-reader-v10';
+const CACHE_NAME = 'minimal-reader-v11';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
