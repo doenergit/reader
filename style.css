@@ -500,3 +500,72 @@ body {
   pointer-events: none;
   -webkit-touch-callout: none;
 }
+
+/* Book Cover Thumbnail Styles */
+.book-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.book-cover {
+  width: 50px;
+  height: 70px;
+  border-radius: 6px;
+  background-color: #242424;
+  object-fit: cover;
+  flex-shrink: 0;
+  border: 1px solid var(--border-color);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+}
+.book-cover-placeholder {
+  width: 50px;
+  height: 70px;
+  border-radius: 6px;
+  background-color: #242424;
+  border: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+/* Fit to Width & Vertical Styles */
+.comic-img.fit-width {
+  width: 100% !important;
+  max-width: 100% !important;
+  height: auto !important;
+  max-height: none !important;
+  object-fit: cover !important;
+}
+.double-mode .comic-img.fit-width {
+  width: 50% !important;
+  max-width: 50% !important;
+}
+
+.vertical-page-slot {
+  width: 100%;
+  min-height: 120px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background-color: #000;
+  position: relative;
+}
+.vertical-comic-img {
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  display: block;
+  user-select: none;
+  -webkit-user-drag: none;
+  pointer-events: none;
+}
+.vertical-comic-img.fit-contain {
+  max-height: 100vh;
+  width: auto;
+  object-fit: contain;
+}

@@ -89,6 +89,12 @@
         </div>
       </div>
       
+      
+      <!-- CBZ Vertical Webtoon Viewer -->
+      <div id="cbz-vertical" style="display: none; width: 100%; height: 100%; position: absolute; inset: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; touch-action: pan-y;">
+        <div id="cbz-vertical-container" style="display: flex; flex-direction: column; align-items: center; width: 100%; min-height: 100%;"></div>
+      </div>
+
       <!-- EPUB HTML Viewer -->
       <div id="epub-viewer" style="display: none;"></div>
     </div>
@@ -136,9 +142,17 @@
           <div class="toggle-group">
             <button class="toggle-btn active" data-opt="single" id="btn-layout-single">1 Seite</button>
             <button class="toggle-btn" data-opt="double" id="btn-layout-double">2 Seiten</button>
+            <button class="toggle-btn" data-opt="vertical" id="btn-layout-vertical">Webtoon</button>
           </div>
         </div>
-        <div class="setting-group" style="margin-top: 16px;">
+        <div class="setting-group" style="margin-top: 14px;">
+          <label>Bildskalierung</label>
+          <div class="toggle-group">
+            <button class="toggle-btn active" data-opt="contain" id="btn-fit-contain">Ganzes Bild</button>
+            <button class="toggle-btn" data-opt="width" id="btn-fit-width">Breite füllen</button>
+          </div>
+        </div>
+        <div class="setting-group" id="group-direction" style="margin-top: 14px;">
           <label>Tippen & Wischen</label>
           <div class="toggle-group">
             <button class="toggle-btn active" data-opt="ltr" id="btn-dir-ltr">Rechts weiter 👉</button>

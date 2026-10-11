@@ -102,14 +102,15 @@ let currentCbzZip = null;
 let currentCbzEntries = [];
 let currentCbzIndex = 0;
 
-// Promise Cache (Guarantees each page is unzipped at most once, zero pop-ins)
+// Promise Cache
 const cbzPromiseCache = new Map();
 
 // In-Memory Books List
 let cachedBooksList = [];
 
-// Settings: default 'ltr' so right tap / left swipe = NEXT
+// Settings: single / double / vertical
 let cbzDisplayMode = localStorage.getItem('cbzDisplayMode') || 'single';
+let cbzFitMode = localStorage.getItem('cbzFitMode') || 'contain'; // 'contain' or 'width'
 let cbzReadDirection = localStorage.getItem('cbzReadDirection') || 'ltr';
 
 let currentEpubBook = null;
@@ -130,10 +131,13 @@ const pageSlider = document.getElementById('page-slider');
 const pageInfo = document.getElementById('page-info');
 const loadingIndicator = document.getElementById('loading');
 
-// 3-Panel Carousel Elements
+// CBZ Viewers
 const cbzCarousel = document.getElementById('cbz-carousel');
 const cbzTrack = document.getElementById('cbz-track');
 const panel1Inner = document.getElementById('panel-1-inner');
+const cbzVertical = document.getElementById('cbz-vertical');
+const cbzVerticalContainer = document.getElementById('cbz-vertical-container');
+
 const epubViewer = document.getElementById('epub-viewer');
 const readerCanvas = document.querySelector('.reader-canvas-container');
 
@@ -142,8 +146,15 @@ const settingsBtn = document.getElementById('settings-btn');
 const settingsModal = document.getElementById('settings-modal');
 const closeSettingsBtn = document.getElementById('close-settings-btn');
 const cbzSettings = document.getElementById('cbz-settings');
+const groupDirection = document.getElementById('group-direction');
+
 const btnLayoutSingle = document.getElementById('btn-layout-single');
 const btnLayoutDouble = document.getElementById('btn-layout-double');
+const btnLayoutVertical = document.getElementById('btn-layout-vertical');
+
+const btnFitContain = document.getElementById('btn-fit-contain');
+const btnFitWidth = document.getElementById('btn-fit-width');
+
 const btnDirRtl = document.getElementById('btn-dir-rtl');
 const btnDirLtr = document.getElementById('btn-dir-ltr');
 const forceReloadBtn = document.getElementById('force-reload-btn');
@@ -151,8 +162,17 @@ const forceReloadBtn = document.getElementById('force-reload-btn');
 function updateSettingsUI() {
   if (btnLayoutSingle) btnLayoutSingle.classList.toggle('active', cbzDisplayMode === 'single');
   if (btnLayoutDouble) btnLayoutDouble.classList.toggle('active', cbzDisplayMode === 'double');
+  if (btnLayoutVertical) btnLayoutVertical.classList.toggle('active', cbzDisplayMode === 'vertical');
+
+  if (btnFitContain) btnFitContain.classList.toggle('active', cbzFitMode === 'contain');
+  if (btnFitWidth) btnFitWidth.classList.toggle('active', cbzFitMode === 'width');
+
   if (btnDirLtr) btnDirLtr.classList.toggle('active', cbzReadDirection === 'ltr');
   if (btnDirRtl) btnDirRtl.classList.toggle('active', cbzReadDirection === 'rtl');
+
+  if (groupDirection) {
+    groupDirection.style.display = (cbzDisplayMode === 'vertical') ? 'none' : 'block';
+  }
 }
 
 if (settingsBtn) {
@@ -174,12 +194,13 @@ if (settingsModal) {
   });
 }
 
+// Layout Buttons
 if (btnLayoutSingle) {
   btnLayoutSingle.addEventListener('click', () => {
     cbzDisplayMode = 'single';
     localStorage.setItem('cbzDisplayMode', 'single');
     updateSettingsUI();
-    if (currentBook?.type === 'cbz') renderCbzPage(currentCbzIndex);
+    if (currentBook?.type === 'cbz') switchCbzLayout();
   });
 }
 if (btnLayoutDouble) {
@@ -187,15 +208,42 @@ if (btnLayoutDouble) {
     cbzDisplayMode = 'double';
     localStorage.setItem('cbzDisplayMode', 'double');
     updateSettingsUI();
-    if (currentBook?.type === 'cbz') renderCbzPage(currentCbzIndex);
+    if (currentBook?.type === 'cbz') switchCbzLayout();
   });
 }
+if (btnLayoutVertical) {
+  btnLayoutVertical.addEventListener('click', () => {
+    cbzDisplayMode = 'vertical';
+    localStorage.setItem('cbzDisplayMode', 'vertical');
+    updateSettingsUI();
+    if (currentBook?.type === 'cbz') switchCbzLayout();
+  });
+}
+
+// Fit Mode Buttons
+if (btnFitContain) {
+  btnFitContain.addEventListener('click', () => {
+    cbzFitMode = 'contain';
+    localStorage.setItem('cbzFitMode', 'contain');
+    updateSettingsUI();
+    if (currentBook?.type === 'cbz') switchCbzLayout();
+  });
+}
+if (btnFitWidth) {
+  btnFitWidth.addEventListener('click', () => {
+    cbzFitMode = 'width';
+    localStorage.setItem('cbzFitMode', 'width');
+    updateSettingsUI();
+    if (currentBook?.type === 'cbz') switchCbzLayout();
+  });
+}
+
 if (btnDirLtr) {
   btnDirLtr.addEventListener('click', () => {
     cbzReadDirection = 'ltr';
     localStorage.setItem('cbzReadDirection', 'ltr');
     updateSettingsUI();
-    if (currentBook?.type === 'cbz') renderCbzPage(currentCbzIndex);
+    if (currentBook?.type === 'cbz' && cbzDisplayMode !== 'vertical') renderCbzPage(currentCbzIndex);
   });
 }
 if (btnDirRtl) {
@@ -203,7 +251,7 @@ if (btnDirRtl) {
     cbzReadDirection = 'rtl';
     localStorage.setItem('cbzReadDirection', 'rtl');
     updateSettingsUI();
-    if (currentBook?.type === 'cbz') renderCbzPage(currentCbzIndex);
+    if (currentBook?.type === 'cbz' && cbzDisplayMode !== 'vertical') renderCbzPage(currentCbzIndex);
   });
 }
 
@@ -222,8 +270,20 @@ if (forceReloadBtn) {
   });
 }
 
+function switchCbzLayout() {
+  if (cbzDisplayMode === 'vertical') {
+    cbzCarousel.style.display = 'none';
+    cbzVertical.style.display = 'block';
+    renderCbzVertical(currentCbzIndex);
+  } else {
+    cbzVertical.style.display = 'none';
+    cbzCarousel.style.display = 'block';
+    renderCbzPage(currentCbzIndex);
+  }
+}
+
 // ==========================================
-// 3. Fast In-Memory Library Management
+// 3. Fast In-Memory Library & Cover Generator
 // ==========================================
 function formatBytes(bytes) {
   if (bytes === 0) return '0 B';
@@ -231,6 +291,49 @@ function formatBytes(bytes) {
   const sizes = ['B', 'KB', 'MB', 'GB'];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+}
+
+async function generateCoverThumbnail(blob) {
+  try {
+    const zip = await JSZip.loadAsync(blob);
+    const validExts = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.avif', '.bmp'];
+    const entries = [];
+    zip.forEach((path, entry) => {
+      if (entry.dir || path.includes('__MACOSX') || path.startsWith('.')) return;
+      if (validExts.some(ext => path.toLowerCase().endsWith(ext))) {
+        entries.push(path);
+      }
+    });
+    if (entries.length === 0) return null;
+    entries.sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
+
+    const firstEntry = entries[0];
+    const imgBlob = await zip.file(firstEntry).async('blob');
+    const tempUrl = URL.createObjectURL(imgBlob);
+
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        URL.revokeObjectURL(tempUrl);
+        const canvas = document.createElement('canvas');
+        const targetW = 90;
+        const targetH = Math.round(targetW * (img.height / img.width)) || 130;
+        canvas.width = targetW;
+        canvas.height = targetH;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, targetW, targetH);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.65);
+        resolve(dataUrl);
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(tempUrl);
+        resolve(null);
+      };
+      img.src = tempUrl;
+    });
+  } catch (e) {
+    return null;
+  }
 }
 
 function renderLibraryList() {
@@ -256,7 +359,12 @@ function renderLibraryList() {
       }
     }
 
+    const coverMarkup = book.cover
+      ? `<img class="book-cover" src="${book.cover}" alt="Cover">`
+      : `<div class="book-cover-placeholder">${book.type}</div>`;
+
     card.innerHTML = `
+      ${coverMarkup}
       <div class="book-info">
         <div class="book-title" title="${book.name}">${book.name}</div>
         <div class="book-meta">
@@ -277,10 +385,15 @@ function renderLibraryList() {
     `;
 
     card.querySelector('.book-info').addEventListener('click', () => openBook(book.id));
+    const coverEl = card.querySelector('.book-cover, .book-cover-placeholder');
+    if (coverEl) coverEl.addEventListener('click', () => openBook(book.id));
+
     card.querySelector('.btn-delete').addEventListener('click', async (e) => {
       e.stopPropagation();
       if (confirm(`"${book.name}" wirklich von deinem Gerät löschen?`)) {
         await dbDeleteBook(book.id);
+        localStorage.removeItem('cover_' + book.id);
+        localStorage.removeItem('prog_' + book.id);
         cachedBooksList = cachedBooksList.filter(b => b.id !== book.id);
         renderLibraryList();
       }
@@ -293,16 +406,17 @@ function renderLibraryList() {
 async function loadLibraryFromDisk() {
   const books = await dbGetAllBooks();
   cachedBooksList = books.map(b => {
-    const saved = localStorage.getItem('prog_' + b.id);
-    if (saved) {
+    const savedProg = localStorage.getItem('prog_' + b.id);
+    if (savedProg) {
       try {
-        const parsed = JSON.parse(saved);
+        const parsed = JSON.parse(savedProg);
         if (parsed.lastReadAt > (b.lastReadAt || 0)) {
           b.progress = parsed.progress;
           b.lastReadAt = parsed.lastReadAt;
         }
       } catch (e) {}
     }
+    const savedCover = localStorage.getItem('cover_' + b.id);
     return {
       id: b.id,
       name: b.name,
@@ -310,10 +424,27 @@ async function loadLibraryFromDisk() {
       size: b.size,
       addedAt: b.addedAt,
       lastReadAt: b.lastReadAt,
-      progress: b.progress
+      progress: b.progress,
+      cover: savedCover || b.cover || null
     };
   });
   renderLibraryList();
+
+  // Asynchronously generate covers for books that don't have one yet
+  for (const b of books) {
+    if (b.type === 'cbz' && !localStorage.getItem('cover_' + b.id)) {
+      generateCoverThumbnail(b.blob).then(coverUrl => {
+        if (coverUrl) {
+          localStorage.setItem('cover_' + b.id, coverUrl);
+          const item = cachedBooksList.find(x => x.id === b.id);
+          if (item) {
+            item.cover = coverUrl;
+            renderLibraryList();
+          }
+        }
+      });
+    }
+  }
 }
 
 addBookBtn.addEventListener('click', () => fileInput.click());
@@ -331,12 +462,24 @@ fileInput.addEventListener('change', async (e) => {
     return;
   }
 
+  // Generate cover thumbnail right away
+  let coverDataUrl = null;
+  if (type === 'cbz') {
+    coverDataUrl = await generateCoverThumbnail(file);
+  }
+
+  const bookId = Date.now().toString();
+  if (coverDataUrl) {
+    localStorage.setItem('cover_' + bookId, coverDataUrl);
+  }
+
   const newBook = {
-    id: Date.now().toString(),
+    id: bookId,
     name: file.name,
     type: type,
     size: file.size,
     blob: file,
+    cover: coverDataUrl,
     addedAt: Date.now(),
     lastReadAt: Date.now(),
     progress: { page: 0, total: 0 }
@@ -349,6 +492,7 @@ fileInput.addEventListener('change', async (e) => {
     name: newBook.name,
     type: newBook.type,
     size: newBook.size,
+    cover: coverDataUrl,
     addedAt: newBook.addedAt,
     lastReadAt: newBook.lastReadAt,
     progress: newBook.progress
@@ -383,11 +527,18 @@ async function openBook(id) {
   updateSettingsUI();
 
   if (currentBook.type === 'cbz') {
-    cbzCarousel.style.display = 'block';
     epubViewer.style.display = 'none';
+    if (cbzDisplayMode === 'vertical') {
+      cbzCarousel.style.display = 'none';
+      cbzVertical.style.display = 'block';
+    } else {
+      cbzVertical.style.display = 'none';
+      cbzCarousel.style.display = 'block';
+    }
     await initCbzReader(currentBook);
   } else if (currentBook.type === 'epub') {
     cbzCarousel.style.display = 'none';
+    cbzVertical.style.display = 'none';
     epubViewer.style.display = 'block';
     await initEpubReader(currentBook);
   }
@@ -400,19 +551,18 @@ function closeReader() {
   libraryView.style.display = 'flex';
   renderLibraryList();
 
-  // Revoke cached image ObjectURLs
   for (const promise of cbzPromiseCache.values()) {
     promise.then(url => { if (url) URL.revokeObjectURL(url); });
   }
   cbzPromiseCache.clear();
 
-  // Clear panel images
   for (let i = 0; i < 3; i++) {
     const img1 = document.getElementById(`p${i}-img1`);
     const img2 = document.getElementById(`p${i}-img2`);
     if (img1) img1.src = '';
     if (img2) img2.src = '';
   }
+  cbzVerticalContainer.innerHTML = '';
   resetZoom(false);
 
   setTimeout(() => {
@@ -476,10 +626,13 @@ async function initCbzReader(book) {
   currentCbzIndex = (book.progress && book.progress.page) ? book.progress.page : 0;
   if (currentCbzIndex >= entries.length) currentCbzIndex = 0;
 
-  await renderCbzPage(currentCbzIndex);
+  if (cbzDisplayMode === 'vertical') {
+    renderCbzVertical(currentCbzIndex);
+  } else {
+    await renderCbzPage(currentCbzIndex);
+  }
 }
 
-// Cached Page Fetcher with GPU Decode
 function fetchPageUrl(index) {
   if (!currentCbzZip || index < 0 || index >= currentCbzEntries.length) return Promise.resolve(null);
   if (cbzPromiseCache.has(index)) return cbzPromiseCache.get(index);
@@ -508,7 +661,7 @@ function fetchPageUrl(index) {
 
 function pruneCbzPromiseCache(centerIndex) {
   for (const [idx, promise] of cbzPromiseCache.entries()) {
-    if (Math.abs(idx - centerIndex) > 5) {
+    if (Math.abs(idx - centerIndex) > 6) {
       promise.then(url => { if (url) URL.revokeObjectURL(url); });
       cbzPromiseCache.delete(idx);
     }
@@ -550,6 +703,10 @@ async function setupPanel(panelNum, pageIndex) {
   const isRtl = (cbzReadDirection === 'rtl');
   inner.style.flexDirection = isRtl ? 'row-reverse' : 'row';
 
+  const isFitWidth = (cbzFitMode === 'width');
+  img1.classList.toggle('fit-width', isFitWidth);
+  img2.classList.toggle('fit-width', isFitWidth);
+
   const url1 = await fetchPageUrl(pageIndex);
   img1.src = url1 || '';
   img1.style.display = url1 ? 'block' : 'none';
@@ -588,18 +745,14 @@ async function renderCbzPage(index) {
 
   currentCbzIndex = index;
 
-  // Track position reset to center panel (-33.333333%)
   cbzTrack.style.transition = 'none';
   cbzTrack.style.transform = 'translateX(-33.333333%)';
 
   const prevIdx = getPrevIndex(currentCbzIndex);
   const nextIdx = getNextIndex(currentCbzIndex);
 
-  // Set Panel 1 (CURR)
   await setupPanel(1, currentCbzIndex);
 
-  // Set Panel 0 (PREV in LTR / NEXT in RTL)
-  // Set Panel 2 (NEXT in LTR / PREV in RTL)
   if (cbzReadDirection === 'rtl') {
     setupPanel(0, nextIdx);
     setupPanel(2, prevIdx);
@@ -608,7 +761,6 @@ async function renderCbzPage(index) {
     setupPanel(2, nextIdx);
   }
 
-  // Update slider & progress display
   if (cbzDisplayMode === 'double' && currentCbzIndex > 0 && currentCbzIndex < currentCbzEntries.length - 1) {
     pageSlider.value = currentCbzIndex + 2;
     pageInfo.textContent = `${currentCbzIndex + 1}-${currentCbzIndex + 2} / ${currentCbzEntries.length}`;
@@ -624,6 +776,10 @@ async function renderCbzPage(index) {
 }
 
 function cbzNext() {
+  if (cbzDisplayMode === 'vertical') {
+    scrollVerticalBy(window.innerHeight * 0.8);
+    return;
+  }
   const nextIdx = getNextIndex(currentCbzIndex);
   if (nextIdx !== -1) {
     animateSlideTo(cbzReadDirection === 'rtl' ? 'prev' : 'next', nextIdx);
@@ -631,6 +787,10 @@ function cbzNext() {
 }
 
 function cbzPrev() {
+  if (cbzDisplayMode === 'vertical') {
+    scrollVerticalBy(-window.innerHeight * 0.8);
+    return;
+  }
   const prevIdx = getPrevIndex(currentCbzIndex);
   if (prevIdx !== -1) {
     animateSlideTo(cbzReadDirection === 'rtl' ? 'next' : 'prev', prevIdx);
@@ -645,10 +805,94 @@ function animateSlideTo(direction, targetIdx) {
   }, 220);
 }
 
+// ==========================================
+// 5.5 Vertical Webtoon Scrolling Engine
+// ==========================================
+let verticalObserver = null;
+
+function renderCbzVertical(startIndex) {
+  cbzVerticalContainer.innerHTML = '';
+  if (verticalObserver) {
+    verticalObserver.disconnect();
+  }
+
+  const isFitContain = (cbzFitMode === 'contain');
+
+  currentCbzEntries.forEach((_, idx) => {
+    const slot = document.createElement('div');
+    slot.className = 'vertical-page-slot';
+    slot.dataset.index = idx;
+    slot.id = `v-slot-${idx}`;
+
+    const img = document.createElement('img');
+    img.className = 'vertical-comic-img' + (isFitContain ? ' fit-contain' : '');
+    slot.appendChild(img);
+    cbzVerticalContainer.appendChild(slot);
+  });
+
+  verticalObserver = new IntersectionObserver((entries) => {
+    entries.forEach((entry) => {
+      const idx = parseInt(entry.target.dataset.index, 10);
+      const img = entry.target.querySelector('img');
+
+      if (entry.isIntersecting) {
+        fetchPageUrl(idx).then(url => {
+          if (url && img) img.src = url;
+        });
+        if (entry.intersectionRatio > 0.45) {
+          currentCbzIndex = idx;
+          pageSlider.value = idx + 1;
+          pageInfo.textContent = `${idx + 1} / ${currentCbzEntries.length}`;
+          dbUpdateProgress(currentBook.id, { page: idx, total: currentCbzEntries.length });
+        }
+      } else {
+        // Clear offscreen images far away
+        const rect = entry.target.getBoundingClientRect();
+        if (Math.abs(rect.top) > window.innerHeight * 3) {
+          if (img) img.src = '';
+        }
+      }
+    });
+  }, {
+    root: cbzVertical,
+    rootMargin: '800px 0px 800px 0px',
+    threshold: [0, 0.5]
+  });
+
+  cbzVerticalContainer.querySelectorAll('.vertical-page-slot').forEach(slot => {
+    verticalObserver.observe(slot);
+  });
+
+  setTimeout(() => {
+    const targetSlot = document.getElementById(`v-slot-${startIndex}`);
+    if (targetSlot) {
+      targetSlot.scrollIntoView();
+    }
+  }, 50);
+}
+
+function scrollVerticalBy(amount) {
+  cbzVertical.scrollBy({ top: amount, behavior: 'smooth' });
+}
+
+cbzVertical.addEventListener('click', (e) => {
+  if (e.target.closest('.reader-top-bar, .reader-bottom-bar, .settings-modal')) return;
+  const width = window.innerWidth;
+  // If tapped within middle 50%
+  if (e.clientX > width * 0.25 && e.clientX < width * 0.75) {
+    toggleOverlay();
+  }
+});
+
 pageSlider.addEventListener('input', (e) => {
   if (currentBook && currentBook.type === 'cbz') {
     const targetIndex = parseInt(e.target.value, 10) - 1;
-    renderCbzPage(targetIndex);
+    if (cbzDisplayMode === 'vertical') {
+      const targetSlot = document.getElementById(`v-slot-${targetIndex}`);
+      if (targetSlot) targetSlot.scrollIntoView();
+    } else {
+      renderCbzPage(targetIndex);
+    }
   } else if (currentBook && currentBook.type === 'epub' && currentEpubBook) {
     const percentage = (parseInt(e.target.value, 10) - 1) / 100;
     const cfi = currentEpubBook.locations.cfiFromPercentage(percentage);
@@ -741,7 +985,7 @@ function navigatePrev() {
   else if (currentBook.type === 'epub') epubPrev();
 }
 
-// Zoom & Focal Pan State (Applied directly to panel-1-inner)
+// Zoom & Focal Pan State
 let currentZoom = 1;
 let panX = 0;
 let panY = 0;
@@ -783,8 +1027,9 @@ let lastTapY = 0;
 
 readerView.addEventListener('touchstart', (e) => {
   if (e.target.closest('.reader-top-bar, .reader-bottom-bar, .settings-modal')) return;
+  if (cbzDisplayMode === 'vertical') return;
 
-  // 1. PINCH-TO-ZOOM AROUND FINGERS (Focal Point)
+  // 1. PINCH-TO-ZOOM AROUND FINGERS
   if (e.touches.length === 2 && currentBook?.type === 'cbz') {
     isPinching = true;
     isTouching = false;
@@ -821,6 +1066,8 @@ readerView.addEventListener('touchstart', (e) => {
 }, { passive: true });
 
 readerView.addEventListener('touchmove', (e) => {
+  if (cbzDisplayMode === 'vertical') return;
+
   // Pinching
   if (isPinching && e.touches.length === 2 && currentBook?.type === 'cbz') {
     e.preventDefault();
@@ -858,7 +1105,7 @@ readerView.addEventListener('touchmove', (e) => {
     return;
   }
 
-  // 1:1 Seamless Track Dragging (You see adjacent page moving with finger in real time!)
+  // 1:1 Seamless Track Dragging
   if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
     isSwiping = true;
   }
@@ -871,6 +1118,8 @@ readerView.addEventListener('touchmove', (e) => {
 }, { passive: false });
 
 readerView.addEventListener('touchend', (e) => {
+  if (cbzDisplayMode === 'vertical') return;
+
   if (isPinching) {
     if (e.touches.length < 2) isPinching = false;
     if (currentZoom < 1.05) {
@@ -895,29 +1144,26 @@ readerView.addEventListener('touchend', (e) => {
   const swipeThreshold = screenWidth * 0.16;
   const isFlick = (Math.abs(dx) > 35 && dt < 280);
 
-  // 1. CAROUSEL SWIPE RELEASE (Slides track smoothly to target panel)
+  // 1. CAROUSEL SWIPE RELEASE
   if (isSwiping && (Math.abs(dx) > swipeThreshold || isFlick) && Math.abs(dx) > Math.abs(dy)) {
     if (currentBook?.type === 'cbz') {
       const isRtl = (cbzReadDirection === 'rtl');
       const draggedLeft = (dx < 0);
 
-      // In LTR: draggedLeft = next (Panel 2), draggedRight = prev (Panel 0)
-      // In RTL: draggedLeft = prev (Panel 2), draggedRight = next (Panel 0)
       let targetIdx = -1;
       let targetPanel = '';
 
       if (draggedLeft) {
         targetIdx = isRtl ? getPrevIndex(currentCbzIndex) : getNextIndex(currentCbzIndex);
-        targetPanel = 'next'; // translateX(-66.666667%)
+        targetPanel = 'next';
       } else {
         targetIdx = isRtl ? getNextIndex(currentCbzIndex) : getPrevIndex(currentCbzIndex);
-        targetPanel = 'prev'; // translateX(0%)
+        targetPanel = 'prev';
       }
 
       if (targetIdx !== -1) {
         animateSlideTo(targetPanel, targetIdx);
       } else {
-        // Edge of book bounce back
         cbzTrack.style.transition = 'transform 0.2s cubic-bezier(0.25, 1, 0.5, 1)';
         cbzTrack.style.transform = 'translateX(-33.333333%)';
       }
@@ -927,14 +1173,13 @@ readerView.addEventListener('touchend', (e) => {
     return;
   }
 
-  // Snap back track if swipe distance was small
   if (isSwiping && currentBook?.type === 'cbz') {
     cbzTrack.style.transition = 'transform 0.2s cubic-bezier(0.25, 1, 0.5, 1)';
     cbzTrack.style.transform = 'translateX(-33.333333%)';
     return;
   }
 
-  // 2. DOUBLE TAP TO ZOOM (Anchors on tap position)
+  // 2. DOUBLE TAP TO ZOOM
   const now = Date.now();
   if (now - lastTapTime < 320 && Math.abs(touch.clientX - lastTapX) < 35 && Math.abs(touch.clientY - lastTapY) < 35) {
     lastTapTime = 0;
@@ -960,7 +1205,7 @@ readerView.addEventListener('touchend', (e) => {
   lastTapX = touch.clientX;
   lastTapY = touch.clientY;
 
-  // 3. SINGLE TAP (Large Center Zone: 44% width)
+  // 3. SINGLE TAP (Large Center Zone)
   const isMangaRtl = (currentBook && currentBook.type === 'cbz' && cbzReadDirection === 'rtl');
   if (touch.clientX < screenWidth * 0.28) {
     isMangaRtl ? navigateNext() : navigatePrev();
@@ -971,7 +1216,6 @@ readerView.addEventListener('touchend', (e) => {
   }
 });
 
-// Desktop Click Fallback
 readerView.addEventListener('click', (e) => {
   if (e.target.closest('.reader-top-bar, .reader-bottom-bar, .settings-modal')) return;
   if ('ontouchstart' in window) return;
@@ -1083,5 +1327,5 @@ if ('serviceWorker' in navigator) {
   });
 }
 
-// Initial Boot: Load metadata from disk once
+// Initial Boot
 loadLibraryFromDisk();
