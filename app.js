@@ -658,6 +658,95 @@ function hideOverlay() {
   readerOverlay.classList.remove('visible');
 }
 
+
+// ==========================================
+// 4.5 Jump To Page Modal Controller
+// ==========================================
+const jumpModal = document.getElementById('jump-modal');
+const jumpModalRange = document.getElementById('jump-modal-range');
+const jumpInput = document.getElementById('jump-input');
+const jumpForm = document.getElementById('jump-form');
+const btnCancelJump = document.getElementById('btn-cancel-jump');
+const btnConfirmJump = document.getElementById('btn-confirm-jump');
+
+function openJumpModal() {
+  if (!currentBook) return;
+  let total = 1;
+  let current = 1;
+
+  if (currentBook.type === 'cbz') {
+    total = currentCbzEntries.length;
+    current = currentCbzIndex + 1;
+  } else if (currentBook.type === 'epub' && currentEpubBook?.locations) {
+    total = Math.max(1, currentEpubBook.locations.length());
+    current = Math.round(parseInt(pageSlider.value, 10)) || 1;
+  }
+
+  jumpInput.min = 1;
+  jumpInput.max = total;
+  jumpInput.value = current;
+  jumpModalRange.textContent = `Seite 1 bis ${total}`;
+
+  jumpModal.style.display = 'flex';
+  setTimeout(() => {
+    jumpInput.focus();
+    jumpInput.select();
+  }, 100);
+}
+
+function closeJumpModal() {
+  jumpModal.style.display = 'none';
+  jumpInput.blur();
+}
+
+if (pageInfo) {
+  pageInfo.addEventListener('click', (e) => {
+    e.stopPropagation();
+    openJumpModal();
+  });
+}
+
+if (btnCancelJump) {
+  btnCancelJump.addEventListener('click', closeJumpModal);
+}
+
+if (jumpModal) {
+  jumpModal.addEventListener('click', (e) => {
+    if (e.target === jumpModal) closeJumpModal();
+  });
+}
+
+function executeJump() {
+  const targetPage = parseInt(jumpInput.value, 10);
+  closeJumpModal();
+  if (isNaN(targetPage) || !currentBook) return;
+
+  if (currentBook.type === 'cbz') {
+    const clampedIndex = Math.min(Math.max(1, targetPage), currentCbzEntries.length) - 1;
+    if (cbzDisplayMode === 'vertical') {
+      const slot = document.getElementById(`v-slot-${clampedIndex}`);
+      if (slot) slot.scrollIntoView({ behavior: 'smooth' });
+    } else {
+      renderCbzPage(clampedIndex);
+    }
+  } else if (currentBook.type === 'epub' && currentEpubBook) {
+    const total = 100;
+    const clamped = Math.min(Math.max(1, targetPage), total);
+    const cfi = currentEpubBook.locations.cfiFromPercentage((clamped - 1) / total);
+    if (cfi) currentEpubRendition.display(cfi);
+  }
+}
+
+if (jumpForm) {
+  jumpForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    executeJump();
+  });
+}
+if (btnConfirmJump) {
+  btnConfirmJump.addEventListener('click', executeJump);
+}
+
 // ==========================================
 // 5. CBZ Seamless Track Carousel & Preloader
 // ==========================================

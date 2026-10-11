@@ -402,10 +402,24 @@ body {
 
 .page-info {
   font-size: 0.85rem;
-  color: #e0e0e0;
-  min-width: 80px;
-  text-align: right;
+  color: #f4f4f5;
+  min-width: 75px;
+  text-align: center;
   font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  padding: 4px 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  transition: background-color 0.15s ease, transform 0.1s ease;
+  pointer-events: auto !important;
+}
+
+.page-info:active {
+  background: rgba(255, 255, 255, 0.28);
+  transform: scale(0.96);
 }
 
 /* Spinner / Loader */
@@ -678,4 +692,85 @@ body {
 .action-sheet-btn.cancel {
   color: #60a5fa;
   font-weight: 600;
+}
+
+/* Jump to Page Modal */
+.jump-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  z-index: 350;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.jump-modal-card {
+  width: 100%;
+  max-width: 290px;
+  background: rgba(30, 30, 30, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 16px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+  animation: scaleUpJump 0.2s cubic-bezier(0.25, 1, 0.5, 1);
+}
+@keyframes scaleUpJump {
+  from { transform: scale(0.9); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+.jump-modal-title {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text-main);
+}
+.jump-modal-subtitle {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-top: 4px;
+  margin-bottom: 16px;
+}
+.jump-input {
+  width: 120px;
+  text-align: center;
+  padding: 10px 12px;
+  font-size: 1.3rem;
+  font-weight: 700;
+  background: #18181b;
+  border: 1.5px solid var(--accent);
+  color: white;
+  border-radius: 10px;
+  outline: none;
+  margin-bottom: 20px;
+}
+.jump-modal-buttons {
+  width: 100%;
+  display: flex;
+  gap: 10px;
+}
+.jump-btn {
+  flex: 1;
+  padding: 11px;
+  border-radius: 10px;
+  border: none;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.jump-btn:active {
+  opacity: 0.8;
+}
+.jump-btn.cancel {
+  background: #27272a;
+  color: #a1a1aa;
+}
+.jump-btn.confirm {
+  background: var(--accent);
+  color: white;
 }
