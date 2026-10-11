@@ -251,7 +251,7 @@ body {
 .reader-overlay {
   position: absolute;
   inset: 0;
-  pointer-events: none;
+  pointer-events: none !important;
   z-index: 20;
   opacity: 0;
   transition: opacity 0.2s ease-in-out;
@@ -259,7 +259,12 @@ body {
 
 .reader-overlay.visible {
   opacity: 1;
-  pointer-events: auto;
+  pointer-events: none !important;
+}
+
+.reader-top-bar,
+.reader-bottom-bar {
+  pointer-events: auto !important;
 }
 
 .reader-top-bar {
@@ -442,4 +447,9 @@ body {
 /* Reader Smooth Transitions */
 #cbz-viewer {
   will-change: transform;
+}
+
+#cbz-viewer img {
+  pointer-events: none !important;
+  -webkit-touch-callout: none !important;
 }

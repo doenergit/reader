@@ -593,15 +593,18 @@ function handleReaderTap(clientX) {
   }
 }
 
-// Touch & Swipe state
+// Attach directly to readerView (covers entire fullscreen)
 let touchStartX = 0;
 let touchStartY = 0;
 let touchStartTime = 0;
 let isTouching = false;
 let isSwiping = false;
 
-readerCanvas.addEventListener('touchstart', (e) => {
+readerView.addEventListener('touchstart', (e) => {
+  // Ignore touches on navigation controls, sliders or settings
+  if (e.target.closest('.reader-top-bar, .reader-bottom-bar, .settings-modal')) return;
   if (e.touches.length !== 1) return;
+
   isTouching = true;
   isSwiping = false;
   touchStartX = e.touches[0].clientX;
@@ -609,7 +612,7 @@ readerCanvas.addEventListener('touchstart', (e) => {
   touchStartTime = Date.now();
 }, { passive: true });
 
-readerCanvas.addEventListener('touchmove', (e) => {
+readerView.addEventListener('touchmove', (e) => {
   if (!isTouching || e.touches.length !== 1) return;
   const dx = e.touches[0].clientX - touchStartX;
   const dy = e.touches[0].clientY - touchStartY;
@@ -618,14 +621,14 @@ readerCanvas.addEventListener('touchmove', (e) => {
     isSwiping = true;
   }
 
-  // Smooth horizontal drag resistance
+  // Smooth horizontal drag resistance like MangaPlus
   if (Math.abs(dx) > Math.abs(dy) && currentBook?.type === 'cbz') {
     e.preventDefault();
     cbzViewer.style.transform = `translateX(${dx * 0.3}px)`;
   }
 }, { passive: false });
 
-readerCanvas.addEventListener('touchend', (e) => {
+readerView.addEventListener('touchend', (e) => {
   if (!isTouching) return;
   isTouching = false;
 
@@ -644,10 +647,10 @@ readerCanvas.addEventListener('touchend', (e) => {
   if (isSwiping && Math.abs(dx) > 35 && Math.abs(dx) > Math.abs(dy)) {
     const isMangaRtl = (currentBook?.type === 'cbz' && cbzReadDirection === 'rtl');
     if (dx < 0) {
-      // Swiped Left (finger moved right to left)
+      // Swiped Left (finger moved right to left) -> NEXT in LTR
       isMangaRtl ? navigatePrev() : navigateNext();
     } else {
-      // Swiped Right (finger moved left to right)
+      // Swiped Right (finger moved left to right) -> PREV in LTR
       isMangaRtl ? navigateNext() : navigatePrev();
     }
     return;
@@ -660,7 +663,8 @@ readerCanvas.addEventListener('touchend', (e) => {
 });
 
 // Desktop Click Fallback
-readerCanvas.addEventListener('click', (e) => {
+readerView.addEventListener('click', (e) => {
+  if (e.target.closest('.reader-top-bar, .reader-bottom-bar, .settings-modal')) return;
   if ('ontouchstart' in window) return;
   handleReaderTap(e.clientX);
 });
