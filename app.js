@@ -316,13 +316,13 @@ async function generateCoverThumbnail(blob) {
       img.onload = () => {
         URL.revokeObjectURL(tempUrl);
         const canvas = document.createElement('canvas');
-        const targetW = 90;
-        const targetH = Math.round(targetW * (img.height / img.width)) || 130;
+        const targetW = 320;
+        const targetH = Math.round(targetW * (img.height / img.width)) || 480;
         canvas.width = targetW;
         canvas.height = targetH;
         const ctx = canvas.getContext('2d');
         ctx.drawImage(img, 0, 0, targetW, targetH);
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.65);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.78);
         resolve(dataUrl);
       };
       img.onerror = () => {
@@ -368,7 +368,7 @@ if (btnConfirmDelete) {
     const id = bookPendingDelete.id;
     hideDeleteModal();
     await dbDeleteBook(id);
-    localStorage.removeItem('cover_' + id);
+    localStorage.removeItem('cover_v2_' + id); localStorage.removeItem('cover_' + id);
     localStorage.removeItem('prog_' + id);
     cachedBooksList = cachedBooksList.filter(b => b.id !== id);
     renderLibraryList();
@@ -480,7 +480,7 @@ async function loadLibraryFromDisk() {
         }
       } catch (e) {}
     }
-    const savedCover = localStorage.getItem('cover_' + b.id);
+    const savedCover = localStorage.getItem('cover_v2_' + b.id);
     return {
       id: b.id,
       name: b.name,
@@ -496,10 +496,10 @@ async function loadLibraryFromDisk() {
 
   // Asynchronously generate covers for books that don't have one yet
   for (const b of books) {
-    if (b.type === 'cbz' && !localStorage.getItem('cover_' + b.id)) {
+    if (b.type === 'cbz' && !localStorage.getItem('cover_v2_' + b.id)) {
       generateCoverThumbnail(b.blob).then(coverUrl => {
         if (coverUrl) {
-          localStorage.setItem('cover_' + b.id, coverUrl);
+          localStorage.setItem('cover_v2_' + b.id, coverUrl);
           const item = cachedBooksList.find(x => x.id === b.id);
           if (item) {
             item.cover = coverUrl;
@@ -534,7 +534,7 @@ fileInput.addEventListener('change', async (e) => {
 
   const bookId = Date.now().toString();
   if (coverDataUrl) {
-    localStorage.setItem('cover_' + bookId, coverDataUrl);
+    localStorage.setItem('cover_v2_' + bookId, coverDataUrl);
   }
 
   const newBook = {
