@@ -126,6 +126,23 @@
   </div>
 
   
+  
+  <!-- iOS Action Sheet Modal for Delete Confirmation -->
+  <div id="delete-modal" class="action-sheet-overlay" style="display: none;">
+    <div class="action-sheet-sheet">
+      <div class="action-sheet-group">
+        <div class="action-sheet-header">
+          <div class="action-sheet-title" id="delete-modal-title">Buchname</div>
+          <div class="action-sheet-subtitle">Möchtest du diese Datei von deinem iPhone entfernen?</div>
+        </div>
+        <button id="btn-confirm-delete" class="action-sheet-btn danger">🗑️ Datei löschen</button>
+      </div>
+      <div class="action-sheet-group" style="margin-top: 8px;">
+        <button id="btn-cancel-delete" class="action-sheet-btn cancel">Abbrechen</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Settings Modal -->
   <div id="settings-modal" class="settings-modal" style="display: none;">
     <div class="settings-content">

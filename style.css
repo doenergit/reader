@@ -16,7 +16,14 @@
   margin: 0;
   padding: 0;
   -webkit-tap-highlight-color: transparent;
-  user-select: none;
+  -webkit-touch-callout: none !important;
+  -webkit-user-select: none !important;
+  user-select: none !important;
+}
+
+input, textarea {
+  -webkit-user-select: auto !important;
+  user-select: auto !important;
 }
 
 body {
@@ -86,48 +93,110 @@ body {
 }
 
 .book-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px 12px;
+  padding-bottom: 24px;
 }
 
 .book-card {
-  background-color: var(--surface-color);
-  border: 1px solid var(--border-color);
-  border-radius: 12px;
-  padding: 14px 16px;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  flex-direction: column;
+  background: transparent;
+  border: none;
+  padding: 0;
   cursor: pointer;
-  transition: background-color 0.2s;
+  position: relative;
+  transition: transform 0.15s ease, opacity 0.15s ease;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .book-card:active {
-  background-color: var(--surface-hover);
+  transform: scale(0.96);
+  opacity: 0.88;
 }
 
-.book-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.book-title {
-  font-size: 1rem;
-  font-weight: 600;
-  white-space: nowrap;
+.book-cover-wrap {
+  width: 100%;
+  aspect-ratio: 2 / 3;
+  border-radius: 12px;
   overflow: hidden;
-  text-overflow: ellipsis;
-  margin-bottom: 4px;
-}
-
-.book-meta {
-  font-size: 0.8rem;
-  color: var(--text-muted);
+  background: #1c1c1e;
+  border: 1px solid var(--border-color);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: center;
+}
+
+.book-cover {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.book-cover-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  background: linear-gradient(135deg, #18181b 0%, #27272a 100%);
+}
+
+.book-badge-chip {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  text-transform: uppercase;
+  font-size: 0.65rem;
+  font-weight: 800;
+  padding: 2px 6px;
+  border-radius: 5px;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+.book-badge-chip.cbz {
+  color: #60a5fa;
+}
+.book-badge-chip.epub {
+  color: #34d399;
+}
+
+.book-card-info {
+  margin-top: 8px;
+  padding: 0 2px;
+}
+
+.book-card-title {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text-main);
+  line-height: 1.25;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
+}
+
+.book-card-meta {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-top: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
 .format-badge {
@@ -568,4 +637,75 @@ body {
   max-height: 100vh;
   width: auto;
   object-fit: contain;
+}
+
+/* iOS Native Action Sheet */
+.action-sheet-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  z-index: 300;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 12px 12px calc(var(--safe-bottom) + 12px);
+}
+.action-sheet-sheet {
+  width: 100%;
+  max-width: 400px;
+  animation: slideUpAction 0.25s cubic-bezier(0.25, 1, 0.5, 1);
+}
+@keyframes slideUpAction {
+  from { transform: translateY(100%); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+.action-sheet-group {
+  background: rgba(30, 30, 30, 0.95);
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+.action-sheet-header {
+  padding: 14px 16px 12px;
+  text-align: center;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+.action-sheet-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-main);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.action-sheet-subtitle {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+.action-sheet-btn {
+  width: 100%;
+  padding: 15px;
+  border: none;
+  background: transparent;
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: center;
+  transition: background-color 0.15s;
+}
+.action-sheet-btn:active {
+  background: rgba(255, 255, 255, 0.1);
+}
+.action-sheet-btn.danger {
+  color: #ef4444;
+  font-weight: 600;
+}
+.action-sheet-btn.cancel {
+  color: #60a5fa;
+  font-weight: 600;
 }

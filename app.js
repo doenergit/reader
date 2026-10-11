@@ -336,6 +336,45 @@ async function generateCoverThumbnail(blob) {
   }
 }
 
+// Delete Action Sheet Controller
+const deleteModal = document.getElementById('delete-modal');
+const deleteModalTitle = document.getElementById('delete-modal-title');
+const btnConfirmDelete = document.getElementById('btn-confirm-delete');
+const btnCancelDelete = document.getElementById('btn-cancel-delete');
+let bookPendingDelete = null;
+
+function showDeleteModal(book) {
+  bookPendingDelete = book;
+  if (deleteModalTitle) deleteModalTitle.textContent = book.name;
+  if (deleteModal) deleteModal.style.display = 'flex';
+}
+
+function hideDeleteModal() {
+  if (deleteModal) deleteModal.style.display = 'none';
+  bookPendingDelete = null;
+}
+
+if (btnCancelDelete) {
+  btnCancelDelete.addEventListener('click', hideDeleteModal);
+}
+if (deleteModal) {
+  deleteModal.addEventListener('click', (e) => {
+    if (e.target === deleteModal) hideDeleteModal();
+  });
+}
+if (btnConfirmDelete) {
+  btnConfirmDelete.addEventListener('click', async () => {
+    if (!bookPendingDelete) return;
+    const id = bookPendingDelete.id;
+    hideDeleteModal();
+    await dbDeleteBook(id);
+    localStorage.removeItem('cover_' + id);
+    localStorage.removeItem('prog_' + id);
+    cachedBooksList = cachedBooksList.filter(b => b.id !== id);
+    renderLibraryList();
+  });
+}
+
 function renderLibraryList() {
   cachedBooksList.sort((a, b) => (b.lastReadAt || 0) - (a.lastReadAt || 0));
 
@@ -350,53 +389,78 @@ function renderLibraryList() {
     const card = document.createElement('div');
     card.className = 'book-card';
 
-    let progressText = 'Ungelesen';
+    let progressText = 'Neu';
     if (book.progress) {
       if (book.type === 'cbz' && book.progress.total) {
-        progressText = `Seite ${book.progress.page + 1} / ${book.progress.total}`;
+        progressText = `S. ${book.progress.page + 1}/${book.progress.total}`;
       } else if (book.type === 'epub' && book.progress.percentage !== undefined) {
-        progressText = `${Math.round(book.progress.percentage)}% gelesen`;
+        progressText = `${Math.round(book.progress.percentage)}%`;
       }
     }
 
     const coverMarkup = book.cover
       ? `<img class="book-cover" src="${book.cover}" alt="Cover">`
-      : `<div class="book-cover-placeholder">${book.type}</div>`;
+      : `<div class="book-cover-placeholder"><span>📖</span><span>${book.type}</span></div>`;
 
     card.innerHTML = `
-      ${coverMarkup}
-      <div class="book-info">
-        <div class="book-title" title="${book.name}">${book.name}</div>
-        <div class="book-meta">
-          <span class="format-badge ${book.type}">${book.type}</span>
-          <span>${formatBytes(book.size)}</span>
-          <span>•</span>
-          <span>${progressText}</span>
-        </div>
+      <div class="book-cover-wrap">
+        ${coverMarkup}
+        <div class="book-badge-chip ${book.type}">${book.type}</div>
       </div>
-      <div class="book-actions">
-        <button class="btn-delete" title="Buch löschen" data-id="${book.id}">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="3 6 5 6 21 6"></polyline>
-            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-          </svg>
-        </button>
+      <div class="book-card-info">
+        <div class="book-card-title">${book.name}</div>
+        <div class="book-card-meta">
+          <span>${progressText}</span>
+          <span>${formatBytes(book.size)}</span>
+        </div>
       </div>
     `;
 
-    card.querySelector('.book-info').addEventListener('click', () => openBook(book.id));
-    const coverEl = card.querySelector('.book-cover, .book-cover-placeholder');
-    if (coverEl) coverEl.addEventListener('click', () => openBook(book.id));
+    // Long-Press to delete detection
+    let pressTimer = null;
+    let isLongPress = false;
+    let startX = 0;
+    let startY = 0;
 
-    card.querySelector('.btn-delete').addEventListener('click', async (e) => {
-      e.stopPropagation();
-      if (confirm(`"${book.name}" wirklich von deinem Gerät löschen?`)) {
-        await dbDeleteBook(book.id);
-        localStorage.removeItem('cover_' + book.id);
-        localStorage.removeItem('prog_' + book.id);
-        cachedBooksList = cachedBooksList.filter(b => b.id !== book.id);
-        renderLibraryList();
+    card.addEventListener('touchstart', (e) => {
+      if (e.touches.length !== 1) return;
+      isLongPress = false;
+      startX = e.touches[0].clientX;
+      startY = e.touches[0].clientY;
+
+      pressTimer = setTimeout(() => {
+        isLongPress = true;
+        if (navigator.vibrate) {
+          try { navigator.vibrate(40); } catch (err) {}
+        }
+        showDeleteModal(book);
+      }, 480);
+    }, { passive: true });
+
+    card.addEventListener('touchmove', (e) => {
+      const dx = e.touches[0].clientX - startX;
+      const dy = e.touches[0].clientY - startY;
+      if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
+        clearTimeout(pressTimer);
       }
+    }, { passive: true });
+
+    card.addEventListener('touchend', (e) => {
+      clearTimeout(pressTimer);
+    });
+
+    card.addEventListener('click', (e) => {
+      if (isLongPress) {
+        isLongPress = false;
+        return;
+      }
+      openBook(book.id);
+    });
+
+    // Desktop Right-Click Fallback
+    card.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      showDeleteModal(book);
     });
 
     bookListEl.appendChild(card);
